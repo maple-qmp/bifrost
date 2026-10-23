@@ -7,6 +7,177 @@ import (
 	"testing"
 )
 
+// Some OpenAI-compatible upstreams use an empty finish_reason on live deltas.
+// It must not complete a tool whose JSON arguments are still arriving.
+func TestToBifrostResponsesStreamResponse_EmptyFinishReason(t *testing.T) {
+	for _, finish := range []*string{nil, Ptr("")} {
+		state := AcquireChatToResponsesStreamState()
+		var args strings.Builder
+		for i, fragment := range []string{`{`, `"command":`, `"echo hello"}`} {
+			tool := ChatAssistantMessageToolCall{Index: 0, Function: ChatAssistantMessageToolCallFunction{Arguments: fragment}}
+			if i == 0 {
+				tool.ID = Ptr("call_empty_finish")
+				tool.Function.Name = Ptr("Bash")
+			}
+			chunk := &BifrostChatResponse{ID: "chat_test", Choices: []BifrostResponseChoice{{
+				FinishReason:             finish,
+				ChatStreamResponseChoice: &ChatStreamResponseChoice{Delta: &ChatStreamResponseChoiceDelta{ToolCalls: []ChatAssistantMessageToolCall{tool}}},
+			}}}
+			for _, event := range chunk.ToBifrostResponsesStreamResponse(state) {
+				switch event.Type {
+				case ResponsesStreamResponseTypeOutputItemDone, ResponsesStreamResponseTypeFunctionCallArgumentsDone, ResponsesStreamResponseTypeCompleted:
+					t.Fatalf("premature %s after argument fragment %q (finish_reason=%v)", event.Type, fragment, finish)
+				case ResponsesStreamResponseTypeFunctionCallArgumentsDelta:
+					args.WriteString(*event.Delta)
+				}
+			}
+		}
+		if args.String() != `{"command":"echo hello"}` {
+			t.Fatalf("arguments = %q", args.String())
+		}
+		terminal := &BifrostChatResponse{ID: "chat_test", Choices: []BifrostResponseChoice{{
+			FinishReason:             Ptr("tool_calls"),
+			ChatStreamResponseChoice: &ChatStreamResponseChoice{Delta: &ChatStreamResponseChoiceDelta{}},
+		}}}
+		closed, completed := 0, 0
+		for _, event := range terminal.ToBifrostResponsesStreamResponse(state) {
+			if event.Type == ResponsesStreamResponseTypeOutputItemDone {
+				closed++
+			}
+			if event.Type == ResponsesStreamResponseTypeCompleted {
+				completed++
+			}
+		}
+		if closed != 1 || completed != 1 {
+			t.Fatalf("terminal events: closed=%d completed=%d", closed, completed)
+		}
+		ReleaseChatToResponsesStreamState(state)
+	}
+}
+
+func BenchmarkChatToResponsesEmptyFinishReason(b *testing.B) {
+	for _, test := range []struct {
+		name   string
+		finish *string
+	}{{"nil", nil}, {"empty", Ptr("")}} {
+		b.Run(test.name, func(b *testing.B) {
+			chunk := &BifrostChatResponse{ID: "chat_bench", Choices: []BifrostResponseChoice{{FinishReason: test.finish,
+				ChatStreamResponseChoice: &ChatStreamResponseChoice{Delta: &ChatStreamResponseChoiceDelta{}},
+			}}}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				state := AcquireChatToResponsesStreamState()
+				chunk.ToBifrostResponsesStreamResponse(state)
+				ReleaseChatToResponsesStreamState(state)
+			}
+		})
+	}
+}
+
+func TestToBifrostResponsesStreamResponse_ParallelTools(t *testing.T) {
+	for _, orphan := range []bool{false, true} {
+		t.Run(map[bool]string{false: "parallel", true: "orphan_before_parallel"}[orphan], func(t *testing.T) {
+			state := AcquireChatToResponsesStreamState()
+			defer ReleaseChatToResponsesStreamState(state)
+			starts, ends := map[string]int{}, map[string]int{}
+			arguments := map[string]string{}
+			var completed *BifrostResponsesResponse
+			frames := []string{
+				`{"id":"chat_parallel","choices":[{"index":0,"delta":{"content":"Using two tools."}}]}`,
+				`{"id":"chat_parallel","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_A","function":{"name":"first","arguments":"{\"x\":"}},{"index":1,"id":"call_B","function":{"name":"second","arguments":"{\"y\":"}}]},"finish_reason":""}]}`,
+				`{"id":"chat_parallel","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"2}"}},{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}]}`,
+			}
+			for _, frame := range frames {
+				var chunk BifrostChatResponse
+				if err := json.Unmarshal([]byte(frame), &chunk); err != nil {
+					t.Fatal(err)
+				}
+				if orphan && len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+					chunk.Choices[0].Delta.ToolCalls = append([]ChatAssistantMessageToolCall{{Index: 99, Function: ChatAssistantMessageToolCallFunction{Arguments: "ignored"}}}, chunk.Choices[0].Delta.ToolCalls...)
+				}
+				for _, event := range chunk.ToBifrostResponsesStreamResponse(state) {
+					switch event.Type {
+					case ResponsesStreamResponseTypeOutputItemAdded:
+						if event.Item.Type != nil && *event.Item.Type == ResponsesMessageTypeFunctionCall {
+							starts[*event.Item.CallID]++
+						}
+					case ResponsesStreamResponseTypeFunctionCallArgumentsDelta:
+						arguments[*event.ItemID] += *event.Delta
+					case ResponsesStreamResponseTypeOutputItemDone:
+						if event.Item.Type != nil && *event.Item.Type == ResponsesMessageTypeFunctionCall {
+							ends[*event.Item.CallID]++
+						}
+					case ResponsesStreamResponseTypeCompleted:
+						completed = event.Response
+					}
+				}
+			}
+			for id, want := range map[string]string{"call_A": `{"x":1}`, "call_B": `{"y":2}`} {
+				if starts[id] != 1 || ends[id] != 1 || arguments[id] != want {
+					t.Fatalf("%s: starts=%d ends=%d arguments=%q; want one complete call with %s", id, starts[id], ends[id], arguments[id], want)
+				}
+			}
+			if completed == nil {
+				t.Fatal("missing response.completed")
+			}
+			calls := 0
+			for _, item := range completed.Output {
+				if item.Type != nil && *item.Type == ResponsesMessageTypeFunctionCall {
+					calls++
+					if *item.Arguments != arguments[*item.CallID] {
+						t.Fatalf("completed arguments differ for %s", *item.CallID)
+					}
+				}
+			}
+			if calls != 2 {
+				t.Fatalf("completed contains %d tools, want 2", calls)
+			}
+		})
+	}
+}
+
+func TestResponsesStreamToChatPreservesDistinctToolIndices(t *testing.T) {
+	// Function calls can start at output_index 0, or follow text/reasoning items.
+	for _, indices := range [][]int{{0, 1}, {1, 2}, {2, 4}} {
+		seen := map[uint16]bool{}
+		for _, index := range indices {
+			added := &BifrostResponsesStreamResponse{Type: ResponsesStreamResponseTypeOutputItemAdded, OutputIndex: Ptr(index), Item: &ResponsesMessage{
+				Type: Ptr(ResponsesMessageTypeFunctionCall), ResponsesToolMessage: &ResponsesToolMessage{CallID: Ptr("call"), Name: Ptr("lookup")},
+			}}
+			toolIndex := added.ToBifrostChatResponse().Choices[0].Delta.ToolCalls[0].Index
+			if seen[toolIndex] {
+				t.Fatalf("output indices %v collide at tool index %d", indices, toolIndex)
+			}
+			seen[toolIndex] = true
+			delta := &BifrostResponsesStreamResponse{Type: ResponsesStreamResponseTypeFunctionCallArgumentsDelta, OutputIndex: Ptr(index), Delta: Ptr(`{}`)}
+			if got := delta.ToBifrostChatResponse().Choices[0].Delta.ToolCalls[0].Index; got != toolIndex {
+				t.Fatalf("start index=%d but delta index=%d", toolIndex, got)
+			}
+		}
+	}
+}
+
+func BenchmarkChatToResponsesParallelTools(b *testing.B) {
+	var chunk BifrostChatResponse
+	if err := json.Unmarshal([]byte(`{"id":"chat_parallel","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_A","function":{"name":"first","arguments":"{}"}},{"index":1,"id":"call_B","function":{"name":"second","arguments":"{}"}}]}}]}`), &chunk); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		state := AcquireChatToResponsesStreamState()
+		chunk.ToBifrostResponsesStreamResponse(state)
+		ReleaseChatToResponsesStreamState(state)
+	}
+}
+
+func BenchmarkResponsesToChatToolIndex(b *testing.B) {
+	event := &BifrostResponsesStreamResponse{Type: ResponsesStreamResponseTypeFunctionCallArgumentsDelta, OutputIndex: Ptr(1), Delta: Ptr(`{}`)}
+	b.ReportAllocs()
+	for b.Loop() {
+		event.ToBifrostChatResponse()
+	}
+}
+
 func TestToChatMessages_PreservesDeveloperRole(t *testing.T) {
 	messages := []ResponsesMessage{
 		{

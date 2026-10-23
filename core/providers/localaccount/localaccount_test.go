@@ -30,7 +30,7 @@ func (testLogger) Info(string, ...any)  {}
 func (testLogger) Warn(string, ...any)  {}
 func (testLogger) Error(string, ...any) {}
 
-func testProvider(t *testing.T, kind schemas.ModelProvider, url string) *Provider {
+func testProvider(t testing.TB, kind schemas.ModelProvider, url string) *Provider {
 	t.Helper()
 	p, err := NewProvider(kind, &schemas.ProviderConfig{NetworkConfig: schemas.NetworkConfig{BaseURL: url}, LocalAccountConfig: &schemas.LocalAccountConfig{DataDir: t.TempDir()}}, testLogger{})
 	require.NoError(t, err)
@@ -50,6 +50,253 @@ func testContext(t *testing.T) *schemas.BifrostContext {
 
 const completedSSE = "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\"}]}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"test-model\",\"output\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"total_tokens\":5}}}\n\n"
 const chatSSE = "data: {\"id\":\"chat_1\",\"model\":\"test-model\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hello\",\"reasoning_content\":\"thinking\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chat_1\",\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\ndata: [DONE]\n\n"
+
+func TestLocalAccountCodeBuddyToolStreamEmptyFinishReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for i, fragment := range []string{`{`, `"command": `, `"echo hello"`, `, "description": "Print greeting"}`} {
+			tool := schemas.ChatAssistantMessageToolCall{Index: 0, Function: schemas.ChatAssistantMessageToolCallFunction{Arguments: fragment}}
+			if i == 0 {
+				tool.ID = schemas.Ptr("chatcmpl-tool-test")
+				tool.Function.Name = schemas.Ptr("Bash")
+			}
+			frame := &schemas.BifrostChatResponse{ID: "chat_test", Model: "step-5-preview", Choices: []schemas.BifrostResponseChoice{{
+				FinishReason:             schemas.Ptr(""),
+				ChatStreamResponseChoice: &schemas.ChatStreamResponseChoice{Delta: &schemas.ChatStreamResponseChoiceDelta{ToolCalls: []schemas.ChatAssistantMessageToolCall{tool}}},
+			}}}
+			data, err := json.Marshal(frame)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+		}
+		fmt.Fprint(w, "data: {\"id\":\"chat_test\",\"model\":\"step-5-preview\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer server.Close()
+	p := testProvider(t, schemas.CodeBuddy, server.URL)
+	ctx := testContext(t)
+	r := &schemas.BifrostResponsesRequest{Provider: schemas.CodeBuddy, Model: "step-5-preview", Input: []schemas.ResponsesMessage{{
+		Role: schemas.Ptr(schemas.ResponsesInputMessageRoleUser), Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("Call Bash")},
+	}}}
+	ch, err := p.ResponsesStream(ctx, identityHook, nil, schemas.Key{}, r)
+	require.Nil(t, err)
+	var arguments strings.Builder
+	open := map[int]bool{}
+	starts, stops := 0, 0
+	for chunk := range ch {
+		require.Nil(t, chunk.BifrostError)
+		if chunk.BifrostResponsesStreamResponse == nil {
+			continue
+		}
+		for _, event := range anthropic.ToAnthropicResponsesStreamResponse(ctx, chunk.BifrostResponsesStreamResponse) {
+			switch event.Type {
+			case anthropic.AnthropicStreamEventTypeContentBlockStart:
+				require.False(t, open[*event.Index], "duplicate block start")
+				open[*event.Index] = true
+				starts++
+			case anthropic.AnthropicStreamEventTypeContentBlockDelta:
+				require.True(t, open[*event.Index], "delta after block stop")
+				if event.Delta != nil && event.Delta.PartialJSON != nil {
+					arguments.WriteString(*event.Delta.PartialJSON)
+				}
+			case anthropic.AnthropicStreamEventTypeContentBlockStop:
+				require.True(t, open[*event.Index], "duplicate block stop")
+				open[*event.Index] = false
+				stops++
+			}
+		}
+	}
+	require.Equal(t, 1, starts)
+	require.Equal(t, 1, stops)
+	require.JSONEq(t, `{"command":"echo hello","description":"Print greeting"}`, arguments.String())
+}
+
+func parallelToolParams() *schemas.ChatParameters {
+	return &schemas.ChatParameters{Tools: []schemas.ChatTool{
+		{Type: "function", Function: &schemas.ChatToolFunction{Name: "first"}},
+		{Type: "function", Function: &schemas.ChatToolFunction{Name: "second"}},
+	}}
+}
+
+func TestLocalAccountParallelToolStreams(t *testing.T) {
+	for _, scenario := range []struct {
+		kind   schemas.ModelProvider
+		offset int
+	}{{schemas.ChatGPT, 0}, {schemas.ChatGPT, 1}, {schemas.ChatGPT, 3}, {schemas.CodeBuddy, 0}} {
+		kind, offset := scenario.kind, scenario.offset
+		t.Run(fmt.Sprintf("%s/offset=%d", kind, offset), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				if kind == schemas.ChatGPT {
+					for i, name := range []string{"first", "second"} {
+						fmt.Fprintf(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%d\",\"call_id\":\"call_%d\",\"name\":%q,\"arguments\":\"\"}}\n\n", i+offset, i, i, name)
+					}
+					for _, fragment := range []string{`{"value":`, `1}`} {
+						for _, i := range []int{1, 0} {
+							part := fragment
+							if fragment == "1}" {
+								part = fmt.Sprintf("%d}", i+1)
+							}
+							fmt.Fprintf(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":%d,\"item_id\":\"fc_%d\",\"delta\":%q}\n\n", i+offset, i, part)
+						}
+					}
+					fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_parallel\",\"model\":\"test-model\",\"status\":\"completed\",\"output\":[]}}\n\n")
+				} else {
+					fmt.Fprint(w, "data: "+`{"id":"chat_parallel","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_0","function":{"name":"first","arguments":"{\"value\":"}},{"index":1,"id":"call_1","function":{"name":"second","arguments":"{\"value\":"}}]},"finish_reason":""}]}`+"\n\n")
+					fmt.Fprint(w, "data: "+`{"id":"chat_parallel","model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"2}"}},{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
+				}
+			}))
+			defer server.Close()
+			p := testProvider(t, kind, server.URL)
+			ctx := testContext(t)
+			request := &schemas.BifrostChatRequest{Provider: kind, Model: "test-model", Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("call both tools")}}}, Params: parallelToolParams()}
+			var ch chan *schemas.BifrostStreamChunk
+			var err *schemas.BifrostError
+			if kind == schemas.ChatGPT {
+				ch, err = p.ChatCompletionStream(ctx, identityHook, nil, schemas.Key{}, request)
+			} else {
+				ch, err = p.ResponsesStream(ctx, identityHook, nil, schemas.Key{}, request.ToResponsesRequest())
+			}
+			require.Nil(t, err)
+			names, args, ids := map[int]string{}, map[int]string{}, map[int]string{}
+			open := map[int]bool{}
+			for chunk := range ch {
+				require.Nil(t, chunk.BifrostError)
+				if kind == schemas.ChatGPT {
+					if chunk.BifrostChatResponse == nil {
+						continue
+					}
+					for _, choice := range chunk.BifrostChatResponse.Choices {
+						if choice.ChatStreamResponseChoice == nil || choice.Delta == nil {
+							continue
+						}
+						for _, tool := range choice.Delta.ToolCalls {
+							index := int(tool.Index)
+							if tool.ID != nil {
+								require.Empty(t, ids[index], "two tools share an index")
+								ids[index] = *tool.ID
+							}
+							if tool.Function.Name != nil {
+								names[index] = *tool.Function.Name
+							}
+							args[index] += tool.Function.Arguments
+						}
+					}
+				} else if chunk.BifrostResponsesStreamResponse != nil {
+					for _, event := range anthropic.ToAnthropicResponsesStreamResponse(ctx, chunk.BifrostResponsesStreamResponse) {
+						if event.Index == nil {
+							continue
+						}
+						index := *event.Index
+						switch event.Type {
+						case anthropic.AnthropicStreamEventTypeContentBlockStart:
+							require.False(t, open[index])
+							open[index] = true
+							ids[index] = *event.ContentBlock.ID
+							names[index] = *event.ContentBlock.Name
+						case anthropic.AnthropicStreamEventTypeContentBlockDelta:
+							require.True(t, open[index], "delta after stop")
+							if event.Delta.PartialJSON != nil {
+								args[index] += *event.Delta.PartialJSON
+							}
+						case anthropic.AnthropicStreamEventTypeContentBlockStop:
+							require.True(t, open[index])
+							open[index] = false
+						}
+					}
+				}
+			}
+			p.collectors.Range(func(_, _ any) bool { t.Error("stream index state leaked after completion"); return true })
+			require.Len(t, ids, 2)
+			require.ElementsMatch(t, []string{"first", "second"}, []string{names[0], names[1]})
+			for index := range ids {
+				require.JSONEq(t, fmt.Sprintf(`{"value":%d}`, index+1), args[index])
+				require.False(t, open[index])
+			}
+		})
+	}
+}
+
+func BenchmarkLocalAccountChatToolIndexStream(b *testing.B) {
+	for _, tools := range []bool{false, true} {
+		b.Run(fmt.Sprintf("tools=%v", tools), func(b *testing.B) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				if tools {
+					for i := 0; i < 2; i++ {
+						fmt.Fprintf(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%d\",\"call_id\":\"call_%d\",\"name\":\"lookup\",\"arguments\":\"\"}}\n\n", i+1, i, i)
+						fmt.Fprintf(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":%d,\"item_id\":\"fc_%d\",\"delta\":\"{}\"}\n\n", i+1, i)
+					}
+				}
+				fmt.Fprint(w, completedSSE)
+			}))
+			defer server.Close()
+			p := testProvider(b, schemas.ChatGPT, server.URL)
+			request := &schemas.BifrostChatRequest{Provider: schemas.ChatGPT, Model: "test", Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("hi")}}}}
+			if tools {
+				request.Params = parallelToolParams()
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+				ch, err := p.ChatCompletionStream(ctx, identityHook, nil, schemas.Key{}, request)
+				if err != nil {
+					cancel()
+					b.Fatal(err)
+				}
+				for chunk := range ch {
+					if chunk.BifrostError != nil {
+						cancel()
+						b.Fatal(chunk.BifrostError)
+					}
+				}
+				cancel()
+			}
+		})
+	}
+}
+
+func TestLocalAccountChatGPTToolIndexStateCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: "+`{"type":"response.output_item.added","output_index":2,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first","arguments":""}}`+"\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	p := testProvider(t, schemas.ChatGPT, server.URL)
+	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+	defer cancel()
+	r := &schemas.BifrostChatRequest{Provider: schemas.ChatGPT, Model: "test", Input: []schemas.ChatMessage{{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("use a tool")}}}, Params: parallelToolParams()}
+	ch, err := p.ChatCompletionStream(ctx, identityHook, nil, schemas.Key{}, r)
+	require.Nil(t, err)
+	seen := false
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				require.True(t, seen)
+				p.collectors.Range(func(_, _ any) bool { t.Error("stream index state leaked after cancellation"); return true })
+				return
+			}
+			if chunk.BifrostChatResponse == nil {
+				continue
+			}
+			for _, choice := range chunk.BifrostChatResponse.Choices {
+				if choice.ChatStreamResponseChoice != nil && choice.Delta != nil && len(choice.Delta.ToolCalls) > 0 {
+					seen = true
+					cancel()
+				}
+			}
+		case <-timeout.C:
+			t.Fatal("cancelled tool stream did not close")
+		}
+	}
+}
 
 func TestLocalAccountChatGPTWire(t *testing.T) {
 	var received map[string]any
@@ -407,6 +654,17 @@ func TestLocalAccountPlanWireRestrictions(t *testing.T) {
 	require.NotContains(t, string(raw), `"role":"system"`)
 	require.Contains(t, string(raw), `"role":"developer"`)
 	require.Contains(t, string(raw), `"type":"additional_tools"`)
+	var wire struct {
+		Input []struct {
+			Type  string                  `json:"type"`
+			Role  string                  `json:"role"`
+			Tools []schemas.ResponsesTool `json:"tools"`
+		} `json:"input"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	require.Equal(t, "additional_tools", wire.Input[0].Type)
+	require.Equal(t, "developer", wire.Input[0].Role, "additional_tools requires an explicit developer role")
+	require.Equal(t, "lookup", *wire.Input[0].Tools[0].Name)
 	require.NotContains(t, string(raw), `"type":"tool_search"`)
 	require.Empty(t, got.Tools)
 }
@@ -418,6 +676,78 @@ func BenchmarkLocalAccountPlanWireConversion(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		p.responseRequest(openai.ToOpenAIResponsesRequest(ctx, r.ToResponsesRequest()))
+	}
+}
+
+func TestLocalAccountChatGPTToolRoleWire(t *testing.T) {
+	for _, protocol := range []string{"chat", "responses", "messages"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%v", protocol, stream), func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					var body struct {
+						Input []struct {
+							Type string `json:"type"`
+							Role string `json:"role"`
+						} `json:"input"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						w.WriteHeader(400)
+						return
+					}
+					if len(body.Input) == 0 || body.Input[0].Type != "additional_tools" || body.Input[0].Role != "developer" {
+						w.WriteHeader(400)
+						fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"Missing required parameter: 'input[0].role'."}}`)
+						return
+					}
+					w.Header().Set("Content-Type", "text/event-stream")
+					fmt.Fprint(w, completedSSE)
+				}))
+				defer server.Close()
+				p := testProvider(t, schemas.ChatGPT, server.URL)
+				ctx := testContext(t)
+				var chat schemas.BifrostChatRequest
+				require.NoError(t, json.Unmarshal([]byte(`{"provider":"chatgpt","model":"test","input":[{"role":"system","content":"instructions"},{"role":"user","content":"hi"}],"params":{"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{}}}}]}}`), &chat))
+				responses := chat.ToResponsesRequest()
+				if protocol == "messages" {
+					var a anthropic.AnthropicMessageRequest
+					require.NoError(t, json.Unmarshal([]byte(`{"model":"chatgpt/test","system":"instructions","messages":[{"role":"user","content":"hi"}],"max_tokens":32,"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{}}}]}`), &a))
+					responses = a.ToBifrostResponsesRequest(ctx)
+				}
+				var ch chan *schemas.BifrostStreamChunk
+				var e *schemas.BifrostError
+				if protocol == "chat" {
+					if stream {
+						ch, e = p.ChatCompletionStream(ctx, nil, nil, schemas.Key{}, &chat)
+					} else {
+						_, e = p.ChatCompletion(ctx, schemas.Key{}, &chat)
+					}
+				} else if stream {
+					ch, e = p.ResponsesStream(ctx, nil, nil, schemas.Key{}, responses)
+				} else {
+					_, e = p.Responses(ctx, schemas.Key{}, responses)
+				}
+				require.Nil(t, e)
+				if stream {
+					for chunk := range ch {
+						require.Nil(t, chunk.BifrostError)
+					}
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkLocalAccountPlanToolWireConversion(b *testing.B) {
+	p := &Provider{}
+	ctx := schemas.NewBifrostContext(context.Background(), time.Time{})
+	var r schemas.BifrostResponsesRequest
+	if err := json.Unmarshal([]byte(`{"model":"test","input":[{"role":"user","content":"hello"}],"params":{"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]}}`), &r); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		p.responseRequest(openai.ToOpenAIResponsesRequest(ctx, &r))
 	}
 }
 

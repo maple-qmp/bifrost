@@ -2177,10 +2177,10 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 		state.TextItemHasContent = true
 	}
 
-	if len(delta.ToolCalls) > 0 {
-		// Tool call delta - handle function call arguments
-		toolCall := delta.ToolCalls[0] // Take first tool call
-		contentIndex := 1              // Tool calls use content_index:1
+	for _, toolCall := range delta.ToolCalls {
+		// Each call owns its index mapping and argument buffer, even when several
+		// calls share a chunk or their later fragments arrive in a different order.
+		contentIndex := 1 // Tool calls use content_index:1
 
 		// Determine tool call ID: use ID if present, otherwise look up by index
 		var toolCallID string
@@ -2191,9 +2191,10 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 			if id, exists := state.ToolCallIndexToID[toolCall.Index]; exists {
 				toolCallID = id
 			} else {
-				// No ID and no mapping found - skip this chunk
+				// No ID and no mapping found - skip only this call, so other
+				// calls and a finish_reason in the same chunk still get processed.
 				// This can happen if the stream is malformed or out of order
-				return responses
+				continue
 			}
 		}
 
@@ -2356,8 +2357,10 @@ func (cr *BifrostChatResponse) ToBifrostResponsesStreamResponse(state *ChatToRes
 		state.SequenceNumber++
 	}
 
-	// Check if this is a completion chunk with finish_reason
-	if choice.FinishReason != nil {
+	// OpenAI-compatible providers may send an empty finish_reason on live deltas.
+	// Only a non-empty reason closes items; otherwise later argument fragments
+	// would be emitted after the tool's content_block_stop on Anthropic ingress.
+	if choice.FinishReason != nil && *choice.FinishReason != "" {
 		terminalEventType, terminalStatus, terminalIncompleteDetails := responsesTerminalFromChatFinishReason(choice.FinishReason)
 
 		// Close reasoning item if the stream ends while it is still open (reasoning-only
@@ -2734,7 +2737,9 @@ func (rsr *BifrostResponsesStreamResponse) ToBifrostChatResponse() *BifrostChatR
 			funcType := "function"
 			var idx uint16
 			if rsr.OutputIndex != nil && *rsr.OutputIndex > 0 {
-				idx = uint16(*rsr.OutputIndex - 1)
+				// Preserve the upstream index: function calls may be the first
+				// output items, so subtracting one aliases indices 0 and 1.
+				idx = uint16(*rsr.OutputIndex)
 			}
 			resp.Choices = []BifrostResponseChoice{
 				{
@@ -2799,7 +2804,7 @@ func (rsr *BifrostResponsesStreamResponse) ToBifrostChatResponse() *BifrostChatR
 		}
 		var idx uint16
 		if rsr.OutputIndex != nil && *rsr.OutputIndex > 0 {
-			idx = uint16(*rsr.OutputIndex - 1)
+			idx = uint16(*rsr.OutputIndex)
 		}
 
 		resp.Choices = []BifrostResponseChoice{

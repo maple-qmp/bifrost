@@ -257,8 +257,9 @@ func (p *Provider) responseRequest(r *openai.OpenAIResponsesRequest) *openai.Ope
 	if len(functions) > 0 {
 		raw, err := schemas.MarshalSorted(struct {
 			Type  string                  `json:"type"`
+			Role  string                  `json:"role"`
 			Tools []schemas.ResponsesTool `json:"tools"`
-		}{"additional_tools", functions})
+		}{"additional_tools", "developer", functions})
 		if err == nil {
 			var item schemas.ResponsesMessage
 			if schemas.Unmarshal(raw, &item) == nil {
@@ -359,6 +360,9 @@ func (p *Provider) ChatCompletionStream(ctx *schemas.BifrostContext, hook schema
 	if p.kind == schemas.CodeBuddy {
 		return p.chatStream(ctx, hook, final, r)
 	}
+	if r.Params != nil && len(r.Params.Tools) > 0 {
+		hook, final = p.chatToolIndexHooks(hook, final)
+	}
 	// Responses deltas omit response metadata; retain only these small scalar handles.
 	id, model := "", r.Model
 	created := 0
@@ -391,6 +395,48 @@ func (p *Provider) ChatCompletionStream(ctx *schemas.BifrostContext, hook schema
 		return hook(c, out, e)
 	}
 	return p.responseStream(ctx, wrap, final, r.ToResponsesRequest())
+}
+
+// chatToolIndexHooks gives Chat clients dense tool-only indices even when the
+// Responses stream includes reasoning or text items. The manager retains the
+// map only from the first tool delta until stream finalization, including cancel.
+// Requests without tools never construct these hooks or allocate index state.
+func (p *Provider) chatToolIndexHooks(hook schemas.PostHookRunner, final func(context.Context)) (schemas.PostHookRunner, func(context.Context)) {
+	var state *collector
+	var stateID string
+	wrap := func(ctx *schemas.BifrostContext, out *schemas.BifrostResponse, err *schemas.BifrostError) (*schemas.BifrostResponse, *schemas.BifrostError) {
+		if out != nil && out.ChatResponse != nil {
+			for i := range out.ChatResponse.Choices {
+				choice := &out.ChatResponse.Choices[i]
+				if choice.ChatStreamResponseChoice == nil || choice.Delta == nil {
+					continue
+				}
+				for j := range choice.Delta.ToolCalls {
+					tool := &choice.Delta.ToolCalls[j]
+					if state == nil {
+						state = &collector{toolIndices: make(map[uint16]uint16)}
+						stateID = p.registerCollector(ctx, state)
+					}
+					index, ok := state.toolIndices[tool.Index]
+					if !ok {
+						index = uint16(len(state.toolIndices))
+						state.toolIndices[tool.Index] = index
+					}
+					tool.Index = index
+				}
+			}
+		}
+		return hook(ctx, out, err)
+	}
+	finish := func(ctx context.Context) {
+		if stateID != "" {
+			p.collectors.Delete(stateID)
+		}
+		if final != nil {
+			final(ctx)
+		}
+	}
+	return wrap, finish
 }
 
 func (p *Provider) ResponsesStream(ctx *schemas.BifrostContext, hook schemas.PostHookRunner, final func(context.Context), _ schemas.Key, r *schemas.BifrostResponsesRequest) (chan *schemas.BifrostStreamChunk, *schemas.BifrostError) {
@@ -503,21 +549,23 @@ func (p *Provider) Responses(ctx *schemas.BifrostContext, _ schemas.Key, r *sche
 	return state.response, nil
 }
 
-// collector retains at most 32 MiB of serialized events and is released on every exit path.
+// collector owns unary aggregation (at most 32 MiB of serialized events) or a
+// streaming tool-index map. Entries are released when their request/stream ends.
 type reasoningKey struct {
 	choice, index int
 	kind          string
 }
 
 type collector struct {
-	reasoning map[reasoningKey]map[string]any
-	bytes     int
-	response  *schemas.BifrostResponsesResponse
-	items     map[int]schemas.ResponsesMessage
-	base      map[string]any
-	choices   map[int]map[string]any
-	tools     map[int]map[int]map[string]any
-	finished  bool
+	toolIndices map[uint16]uint16
+	reasoning   map[reasoningKey]map[string]any
+	bytes       int
+	response    *schemas.BifrostResponsesResponse
+	items       map[int]schemas.ResponsesMessage
+	base        map[string]any
+	choices     map[int]map[string]any
+	tools       map[int]map[int]map[string]any
+	finished    bool
 }
 
 func newCollector() *collector {

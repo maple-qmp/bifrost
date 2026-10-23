@@ -25,6 +25,34 @@ The ordinary-provider gate's before/after ranges overlap (1.730–1.758 and 1.73
 
 The DeepSeek Harness identity rule is confined to the first system text line on the CodeBuddy wire, independent of model ID, behind `prompt_compat`. It replaces an existing identity rather than adding a prefix. On 2026-10-24, the same compatibility benchmark before/after this rule measured medians of 12.70/12.92 ns (disabled) and 6230/6641 ns (enabled, unchanged system), with 0 B/op and 0 allocs/op in both cases. The new matching multiline identity benchmark measured 15601 ns/op, approximately 230 B/op and 4 allocs/op, including the existing compatibility scan and copy-on-write conversion. It retains one fixed compiled identity regexp for the process lifetime, with no new cache or per-credential state. Native OpenAI and DeepSeek providers never call this converter.
 
+The 2026-10-24 ChatGPT tool-declaration fix adds the required `role: "developer"`
+to generated `additional_tools` input items. On the same machine, median
+`BenchmarkLocalAccountPlanToolWireConversion` before/after was 4686/5161 ns/op,
+7768/8093 B/op, and 52/52 allocs/op (pooled buffer sizes vary). The no-tool
+`BenchmarkLocalAccountPlanWireConversion` measured 460.4/439.6 ns/op, 1249/1249
+B/op, and 9/9 allocs/op. The change is confined to ChatGPT requests with function
+tools; it adds no retained state or cache.
+
+The parallel-tool fixes were measured on the same machine with `-benchmem
+-count=3`. `BenchmarkChatToResponsesParallelTools` before/after medians were
+579.2/1035 ns/op, 2457/4923 B/op, and 16/31 allocs/op: the old code converted
+only one of the two tools. `BenchmarkResponsesToChatToolIndex` measured
+165.9/153.2 ns/op, 1016/1016 B/op, and 5/5 allocs/op. Empty chat deltas remained
+at zero bytes and allocations (74.62/74.02 ns/op).
+
+`BenchmarkLocalAccountChatToolIndexStream` includes loopback HTTP, SSE parsing,
+request conversion and stream finalization. Before/after medians for no-tool
+requests were 58235/61079 ns/op, 48824/49324 B/op, and 166/166 allocs/op; timing
+ranges overlap and pooled buffer sizes vary. Two-tool requests measured
+75549/77606 ns/op, 86931/93651 B/op, and 319/330 allocs/op. These measurements
+isolate the ChatGPT dense-index adapter using a Go build overlay of its previous
+implementation; both runs include the shared schema fixes. The extra state is
+created only when a declared tool is emitted: one uint16-to-uint16 map entry per
+tool index, plus Go map overhead and a collector handle, in the existing
+provider-owned manager keyed by RequestID (collision-suffixed). Stream
+finalization deletes the entry on success, error and cancellation. No new stream
+state is stored in BifrostContext, and requests without tools skip these hooks.
+
 To reproduce:
 
 ```bash

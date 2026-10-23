@@ -279354,6 +279354,131 @@
           ]
         }
       ]
+    },
+    {
+      "name": "267. codebuddy tool stream empty finish reason",
+      "description": "Regression: CodeBuddy step-5-preview emits finish_reason=\"\" on live chat deltas. Chat-to-Responses conversion must not emit terminal events until a non-empty finish reason arrives. Pin complete tool JSON and block lifecycle on Anthropic Messages and neutral Responses ingress. No shell command is executed by these tests. Go mocks deterministically cover the upstream empty-finish shape.",
+      "item": [
+        {
+          "name": "codebuddy tool stream empty finish reason step-5-preview /anthropic/v1/messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/step-5-preview\",\n  \"max_tokens\": 256,\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Call Bash exactly once with command echo hello and description Print greeting. Do not execute anything yourself.\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"name\": \"Bash\",\n      \"description\": \"Describe a shell command; this diagnostic does not execute it.\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"command\": {\n            \"type\": \"string\"\n          },\n          \"description\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"command\",\n          \"description\"\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('tool stream remains open until arguments complete', function () {",
+                  "var body = pm.response.text(), events = [];",
+                  "body.split(/\\r?\\n/).forEach(function (line) { if (line.indexOf('data: ') === 0 && line.slice(6) !== '[DONE]') events.push(JSON.parse(line.slice(6))); });",
+                  "pm.expect(events.length, body).to.be.above(0);",
+                  "var open = {}, args = {}, starts = 0, stops = 0, complete = 0;",
+                  "events.forEach(function (e) {",
+                  "pm.expect(e.type, body).not.to.equal('error');",
+                  "if (e.type === 'content_block_start' && e.content_block.type === 'tool_use') { pm.expect(open[e.index], body).not.to.equal(true); open[e.index] = true; args[e.index] = ''; starts++; }",
+                  "if (e.type === 'content_block_delta' && e.delta.type === 'input_json_delta') { pm.expect(open[e.index], body).to.equal(true); args[e.index] += e.delta.partial_json; }",
+                  "if (e.type === 'content_block_stop' && Object.prototype.hasOwnProperty.call(args, e.index)) { pm.expect(open[e.index], body).to.equal(true); open[e.index] = false; JSON.parse(args[e.index]); stops++; }",
+                  "if (e.type === 'message_stop') complete++;",
+                  "});",
+                  "pm.expect(starts, body).to.equal(1); pm.expect(stops, body).to.equal(1); pm.expect(complete, body).to.equal(1);",
+                  "Object.keys(args).forEach(function (id) { pm.expect(open[id], body).to.equal(false); var input = JSON.parse(args[id]); pm.expect(input.command, body).to.equal('echo hello'); pm.expect(input.description, body).to.equal('Print greeting'); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy tool stream empty finish reason step-5-preview /v1/responses",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/step-5-preview\",\n  \"max_output_tokens\": 256,\n  \"stream\": true,\n  \"input\": \"Call Bash exactly once with command echo hello and description Print greeting. Do not execute anything yourself.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"name\": \"Bash\",\n      \"description\": \"Describe a shell command; this diagnostic does not execute it.\",\n      \"parameters\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"command\": {\n            \"type\": \"string\"\n          },\n          \"description\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"command\",\n          \"description\"\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('tool stream remains open until arguments complete', function () {",
+                  "var body = pm.response.text(), events = [];",
+                  "body.split(/\\r?\\n/).forEach(function (line) { if (line.indexOf('data: ') === 0 && line.slice(6) !== '[DONE]') events.push(JSON.parse(line.slice(6))); });",
+                  "pm.expect(events.length, body).to.be.above(0);",
+                  "var open = {}, args = {}, starts = 0, stops = 0, complete = 0;",
+                  "events.forEach(function (e) {",
+                  "pm.expect(e.type, body).not.to.equal('error');",
+                  "if (e.type === 'response.output_item.added' && e.item.type === 'function_call') { pm.expect(open[e.item.id], body).not.to.equal(true); open[e.item.id] = true; args[e.item.id] = e.item.arguments || ''; starts++; }",
+                  "if (e.type === 'response.function_call_arguments.delta') { pm.expect(open[e.item_id], body).to.equal(true); args[e.item_id] += e.delta; }",
+                  "if (e.type === 'response.output_item.done' && e.item.type === 'function_call') { pm.expect(open[e.item.id], body).to.equal(true); pm.expect(e.item.arguments, body).to.equal(args[e.item.id]); JSON.parse(args[e.item.id]); open[e.item.id] = false; stops++; }",
+                  "if (e.type === 'response.completed') complete++;",
+                  "});",
+                  "pm.expect(starts, body).to.equal(1); pm.expect(stops, body).to.equal(1); pm.expect(complete, body).to.equal(1);",
+                  "Object.keys(args).forEach(function (id) { pm.expect(open[id], body).to.equal(false); var input = JSON.parse(args[id]); pm.expect(input.command, body).to.equal('echo hello'); pm.expect(input.description, body).to.equal('Print greeting'); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
