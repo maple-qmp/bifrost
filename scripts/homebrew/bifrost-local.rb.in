@@ -1,0 +1,45 @@
+# Generated from a local build, installed in the maple/bifrost-local local tap.
+class BifrostLocal < Formula
+  desc "Bifrost gateway with native ChatGPT and CodeBuddy accounts (local build)"
+  homepage "https://github.com/maximhq/bifrost"
+  url "@ARCHIVE_URL@"
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  license "Apache-2.0"
+
+  depends_on :macos
+
+  def install
+    libexec.install "bifrost-http"
+    bin.install "bifrost-local"
+    inreplace bin/"bifrost-local", "@BIFROST_BINARY@", (libexec/"bifrost-http").to_s
+  end
+
+  def caveats
+    <<~EOS
+      Open http://127.0.0.1:8080 after starting the service.
+      Data: ~/Library/Application Support/BifrostLocal
+      First setup token: bifrost-local setup-token
+      Service: brew services start bifrost-local
+      Existing data and account credentials survive reinstall/uninstall.
+    EOS
+  end
+
+  service do
+    run opt_bin/"bifrost-local"
+    keep_alive true
+    throttle_interval 10
+    log_path var/"log/bifrost-local.log"
+    error_log_path var/"log/bifrost-local-error.log"
+    environment_variables BIFROST_DISABLE_PROFILER: "1"
+  end
+
+  test do
+    assert_match "Usage of", shell_output("#{bin}/bifrost-local -help 2>&1")
+    with_env(BIFROST_APP_DIR: (testpath/"profile").to_s) do
+      token = shell_output("#{bin}/bifrost-local setup-token").strip
+      assert_match(/\A[0-9a-f]{64}\z/, token)
+      assert_equal 0600, File.stat(testpath/"profile/setup-token").mode & 0777
+    end
+  end
+end
