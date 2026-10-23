@@ -124,6 +124,7 @@ type ProviderResponse struct {
 	IgnoreProviderCost       bool                             `json:"ignore_provider_cost"`             // Ignore provider-reported usage.cost and price from Bifrost's catalog
 	CustomProviderConfig     *schemas.CustomProviderConfig    `json:"custom_provider_config,omitempty"` // Custom provider configuration
 	OpenAIConfig             *schemas.OpenAIConfig            `json:"openai_config,omitempty"`          // OpenAI-specific configuration
+	LocalAccountConfig       *schemas.LocalAccountConfig      `json:"local_account_config,omitempty"`   // Local account credential reference and compatibility settings
 	PromptCache              *schemas.PromptCacheConfig       `json:"prompt_cache,omitempty"`           // Prompt-cache breakpoint injection
 	InjectedTools            []schemas.InjectedTool           `json:"injected_tools,omitempty"`         // MCP tools injected and auto-executed server side
 	ProviderStatus           ProviderStatus                   `json:"provider_status"`                  // Health/initialization status of the provider
@@ -180,9 +181,10 @@ type providerCreatePayload struct {
 	StoreRawRequestResponse  *bool                             `json:"store_raw_request_response,omitempty"`
 	IgnoreProviderCost       *bool                             `json:"ignore_provider_cost,omitempty"`
 	CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"`
-	OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`  // OpenAI-specific configuration
-	PromptCache              *schemas.PromptCacheConfig        `json:"prompt_cache,omitempty"`   // Prompt-cache breakpoint injection
-	InjectedTools            []schemas.InjectedTool            `json:"injected_tools,omitempty"` // MCP tools injected and auto-executed server side
+	OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`        // OpenAI-specific configuration
+	LocalAccountConfig       *schemas.LocalAccountConfig       `json:"local_account_config,omitempty"` // Local account credential reference and compatibility settings
+	PromptCache              *schemas.PromptCacheConfig        `json:"prompt_cache,omitempty"`         // Prompt-cache breakpoint injection
+	InjectedTools            []schemas.InjectedTool            `json:"injected_tools,omitempty"`       // MCP tools injected and auto-executed server side
 }
 
 type providerUpdatePayload struct {
@@ -194,9 +196,10 @@ type providerUpdatePayload struct {
 	StoreRawRequestResponse  *bool                            `json:"store_raw_request_response,omitempty"`
 	IgnoreProviderCost       *bool                            `json:"ignore_provider_cost,omitempty"`
 	CustomProviderConfig     *schemas.CustomProviderConfig    `json:"custom_provider_config,omitempty"`
-	OpenAIConfig             *schemas.OpenAIConfig            `json:"openai_config,omitempty"`  // OpenAI-specific configuration
-	PromptCache              *schemas.PromptCacheConfig       `json:"prompt_cache,omitempty"`   // Prompt-cache breakpoint injection
-	InjectedTools            []schemas.InjectedTool           `json:"injected_tools,omitempty"` // MCP tools injected and auto-executed server side
+	OpenAIConfig             *schemas.OpenAIConfig            `json:"openai_config,omitempty"`        // OpenAI-specific configuration
+	LocalAccountConfig       *schemas.LocalAccountConfig      `json:"local_account_config,omitempty"` // Local account credential reference and compatibility settings
+	PromptCache              *schemas.PromptCacheConfig       `json:"prompt_cache,omitempty"`         // Prompt-cache breakpoint injection
+	InjectedTools            []schemas.InjectedTool           `json:"injected_tools,omitempty"`       // MCP tools injected and auto-executed server side
 }
 
 // applyProviderConfigUpdates copies onto config only the nested config blocks the
@@ -228,8 +231,12 @@ func applyProviderConfigUpdates(config *configstore.ProviderConfig, payload *pro
 	if carried("custom_provider_config") {
 		config.CustomProviderConfig = payload.CustomProviderConfig
 	}
+	if carried("local_account_config") {
+		config.LocalAccountConfig = payload.LocalAccountConfig
+	}
 	if carried("openai_config") {
 		config.OpenAIConfig = payload.OpenAIConfig
+		config.LocalAccountConfig = payload.LocalAccountConfig
 	}
 	if carried("prompt_cache") {
 		config.PromptCache = payload.PromptCache
@@ -241,6 +248,13 @@ func applyProviderConfigUpdates(config *configstore.ProviderConfig, payload *pro
 
 // RegisterRoutes registers all provider management routes
 func (h *ProviderHandler) RegisterRoutes(r *router.Router, middlewares ...schemas.BifrostHTTPMiddleware) {
+	// Local account operations use the same management middleware as provider CRUD.
+	r.GET("/api/providers/{provider}/account", lib.ChainMiddlewares(h.providerAccount, middlewares...))
+	r.POST("/api/providers/{provider}/account/connect", lib.ChainMiddlewares(h.providerAccount, middlewares...))
+	r.POST("/api/providers/{provider}/account/login", lib.ChainMiddlewares(h.providerAccount, middlewares...))
+	r.POST("/api/providers/{provider}/account/callback", lib.ChainMiddlewares(h.providerAccount, middlewares...))
+	r.POST("/api/providers/{provider}/account/detect", lib.ChainMiddlewares(h.providerAccount, middlewares...))
+	r.DELETE("/api/providers/{provider}/account", lib.ChainMiddlewares(h.providerAccount, middlewares...))
 	// Provider CRUD operations
 	r.GET("/api/providers", lib.ChainMiddlewares(h.listProviders, middlewares...))
 	r.GET("/api/providers/{provider}", lib.ChainMiddlewares(h.getProvider, middlewares...))
@@ -376,6 +390,11 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 		sendPayloadDecodeError(ctx)
 		return
 	}
+	// Account providers can only be configured from the local management UI.
+	if (payload.Provider == schemas.ChatGPT || payload.Provider == schemas.CodeBuddy) && !localAccountRequest(ctx) {
+		SendError(ctx, 403, "Local account providers must be configured on this computer")
+		return
+	}
 	// Validate provider
 	if payload.Provider == "" {
 		SendError(ctx, fasthttp.StatusBadRequest, "Missing provider")
@@ -466,6 +485,7 @@ func (h *ProviderHandler) addProvider(ctx *fasthttp.RequestCtx) {
 		IgnoreProviderCost:       payload.IgnoreProviderCost != nil && *payload.IgnoreProviderCost,
 		CustomProviderConfig:     payload.CustomProviderConfig,
 		OpenAIConfig:             payload.OpenAIConfig,
+		LocalAccountConfig:       payload.LocalAccountConfig,
 		PromptCache:              payload.PromptCache,
 		InjectedTools:            payload.InjectedTools,
 	}
@@ -545,6 +565,11 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	if h.isNativeAccountProvider(provider) && !localAccountRequest(ctx) {
+		SendError(ctx, 403, "Local account providers must be configured on this computer")
+		return
+	}
+
 	var payload = struct {
 		Keys []schemas.Key `json:"keys"` // API keys for the provider
 		providerUpdatePayload
@@ -615,6 +640,7 @@ func (h *ProviderHandler) updateProvider(ctx *fasthttp.RequestCtx) {
 		ProxyConfig:              oldConfigRaw.ProxyConfig,
 		CustomProviderConfig:     oldConfigRaw.CustomProviderConfig,
 		OpenAIConfig:             oldConfigRaw.OpenAIConfig,
+		LocalAccountConfig:       oldConfigRaw.LocalAccountConfig,
 		PromptCache:              oldConfigRaw.PromptCache,
 		InjectedTools:            oldConfigRaw.InjectedTools,
 		StoreRawRequestResponse:  oldConfigRaw.StoreRawRequestResponse,
@@ -1711,6 +1737,7 @@ func (h *ProviderHandler) getProviderResponseFromConfig(provider schemas.ModelPr
 		IgnoreProviderCost:       config.IgnoreProviderCost,
 		CustomProviderConfig:     config.CustomProviderConfig,
 		OpenAIConfig:             config.OpenAIConfig,
+		LocalAccountConfig:       config.LocalAccountConfig,
 		PromptCache:              config.PromptCache,
 		InjectedTools:            config.InjectedTools,
 		ProviderStatus:           status,

@@ -5,6 +5,7 @@ import { RbacOperation, RbacResource, useRbac } from "@enterprise/lib";
 import { SettingsIcon, Trash } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProviderConfigSheet from "../dialogs/providerConfigSheet";
+import ProviderAccount from "./providerAccount";
 import ModelProviderKeysTableView from "./modelProviderKeysTableView";
 
 interface Props {
@@ -18,11 +19,12 @@ export default function ModelProviderConfig({ provider, onRequestDelete }: Props
 	const hasUpdateProviderAccess = useRbac(RbacResource.ModelProvider, RbacOperation.Update);
 
 	const showApiKeys = useMemo(() => {
+		if (!provider.custom_provider_config && (provider.name === "chatgpt" || provider.name === "codebuddy")) return false;
 		if (provider.custom_provider_config) {
 			return !(provider.custom_provider_config?.is_key_less ?? false);
 		}
 		return true;
-	}, [provider.name, provider.custom_provider_config?.is_key_less]);
+	}, [provider.name, provider.custom_provider_config]);
 
 	const editConfigButton = (
 		<div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -46,7 +48,9 @@ export default function ModelProviderConfig({ provider, onRequestDelete }: Props
 						aria-label={hasUpdateProviderAccess ? "Edit provider configuration" : "View provider configuration"}
 					>
 						<SettingsIcon className="h-4 w-4" />
-						<span className="hidden @3xl/card-header:inline">{hasUpdateProviderAccess ? "Edit Provider Config" : "View Provider Config"}</span>
+						<span className="hidden @3xl/card-header:inline">
+							{hasUpdateProviderAccess ? "Edit Provider Config" : "View Provider Config"}
+						</span>
 					</Button>
 				</TooltipTrigger>
 				<TooltipContent>{hasUpdateProviderAccess ? "Edit Provider Config" : "View Provider Config"}</TooltipContent>
@@ -57,6 +61,9 @@ export default function ModelProviderConfig({ provider, onRequestDelete }: Props
 	return (
 		<div className="flex w-full flex-col gap-2">
 			<ProviderConfigSheet show={showConfigSheet} onCancel={() => setShowConfigSheet(false)} provider={provider} />
+			{!provider.custom_provider_config && (provider.name === "chatgpt" || provider.name === "codebuddy") && (
+				<ProviderAccount key={provider.name} provider={provider} canUpdate={hasUpdateProviderAccess} />
+			)}
 			<ModelProviderKeysTableView provider={provider} headerActions={editConfigButton} isKeyless={!showApiKeys} />
 		</div>
 	);

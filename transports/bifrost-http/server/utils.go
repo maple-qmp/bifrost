@@ -179,7 +179,7 @@ func (s *BifrostHTTPServer) currentKeyStatus(ks schemas.KeyStatus) (status strin
 	}
 
 	if ks.KeyID == "" {
-		if providerConfig.CustomProviderConfig == nil || !providerConfig.CustomProviderConfig.IsKeyLess {
+		if !(schemas.IsLocalAccountProvider(ks.Provider) && providerConfig.CustomProviderConfig == nil) && (providerConfig.CustomProviderConfig == nil || !providerConfig.CustomProviderConfig.IsKeyLess) {
 			return "", "", false
 		}
 		return providerConfig.Status, providerConfig.Description, true
@@ -242,7 +242,7 @@ func (s *BifrostHTTPServer) updateKeyStatus(
 			continue
 		}
 
-		isKeylessProvider := providerConfig.CustomProviderConfig != nil && providerConfig.CustomProviderConfig.IsKeyLess
+		isKeylessProvider := (schemas.IsLocalAccountProvider(ks.Provider) && providerConfig.CustomProviderConfig == nil) || (providerConfig.CustomProviderConfig != nil && providerConfig.CustomProviderConfig.IsKeyLess)
 
 		if ks.KeyID == "" {
 			if !isKeylessProvider {

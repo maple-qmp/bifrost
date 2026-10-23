@@ -108,6 +108,13 @@ func (baseAccount *BaseAccount) GetConfigForProvider(providerKey schemas.ModelPr
 	if config.CustomProviderConfig != nil {
 		providerConfig.CustomProviderConfig = config.CustomProviderConfig
 	}
+	if providerKey == schemas.ChatGPT || providerKey == schemas.CodeBuddy {
+		providerConfig.LocalAccountConfig = &schemas.LocalAccountConfig{DataDir: baseAccount.store.ConfigDir()}
+		if config.LocalAccountConfig != nil {
+			*providerConfig.LocalAccountConfig = *config.LocalAccountConfig
+			providerConfig.LocalAccountConfig.DataDir = baseAccount.store.ConfigDir()
+		}
+	}
 	if config.OpenAIConfig != nil {
 		providerConfig.OpenAIConfig = config.OpenAIConfig
 	}

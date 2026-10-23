@@ -34,6 +34,8 @@ export const KnownProvidersNames = [
 	"byteplus",
 	"databricks",
 	"cloudflare",
+	"chatgpt",
+	"codebuddy",
 	"github-copilot",
 	"typesafe",
 ] as const;
@@ -187,6 +189,8 @@ export const ProviderLabels: Record<ProviderName, string> = {
 	byteplus: "BytePlus",
 	databricks: "Databricks",
 	cloudflare: "Cloudflare",
+	chatgpt: "ChatGPT Plan",
+	codebuddy: "CodeBuddy",
 	"github-copilot": "GitHub Copilot",
 	typesafe: "TypeSafe",
 } as const;

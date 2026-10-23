@@ -1161,7 +1161,7 @@ func (s *BifrostHTTPServer) ReloadProvider(ctx context.Context, provider schemas
 	if err != nil {
 		return nil, fmt.Errorf("failed to read provider keys for %s: %w", provider, err)
 	}
-	isKeylessProvider := providerInfo.CustomProviderConfig != nil && providerInfo.CustomProviderConfig.IsKeyLess
+	isKeylessProvider := (schemas.IsLocalAccountProvider(provider) && providerInfo.CustomProviderConfig == nil) || (providerInfo.CustomProviderConfig != nil && providerInfo.CustomProviderConfig.IsKeyLess)
 	hasNoKeys := len(inMemoryKeys) == 0 && !isKeylessProvider
 
 	// Refresh keyconfig from the current key list, then reconcile the live
@@ -1333,10 +1333,13 @@ func isKeylessProvider(provider schemas.ModelProvider, cfg *lib.Config) bool {
 		return false
 	}
 	pc, err := cfg.GetProviderConfigRaw(provider)
-	if err != nil || pc == nil || pc.CustomProviderConfig == nil {
+	if err != nil || pc == nil {
 		return false
 	}
-	return pc.CustomProviderConfig.IsKeyLess
+	if pc.CustomProviderConfig != nil {
+		return pc.CustomProviderConfig.IsKeyLess
+	}
+	return schemas.IsLocalAccountProvider(provider)
 }
 
 // setKeyConfig pushes the provider's keys into the catalog's keyconfig. Only a
@@ -3397,7 +3400,7 @@ func (s *BifrostHTTPServer) Bootstrap(ctx context.Context) error {
 			if providerConfig.IgnoreProviderCost {
 				ignoreProviderCost = append(ignoreProviderCost, provider)
 			}
-			if providerConfig.CustomProviderConfig != nil && providerConfig.CustomProviderConfig.IsKeyLess {
+			if (schemas.IsLocalAccountProvider(provider) && providerConfig.CustomProviderConfig == nil) || (providerConfig.CustomProviderConfig != nil && providerConfig.CustomProviderConfig.IsKeyLess) {
 				keyless = append(keyless, provider)
 			}
 		}

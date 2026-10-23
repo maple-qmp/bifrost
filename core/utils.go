@@ -944,3 +944,11 @@ func setAssistantRoleOnce(resp *schemas.BifrostChatResponse, roleSent bool) bool
 	}
 	return true
 }
+
+// providerUsesKey resolves credential mode once per worker, including legacy custom names.
+func providerUsesKey(provider schemas.ModelProvider, custom *schemas.CustomProviderConfig) bool {
+	if custom != nil && custom.BaseProviderType != "" {
+		provider = custom.BaseProviderType
+	}
+	return !schemas.IsLocalAccountProvider(provider) && providerRequiresKey(custom)
+}

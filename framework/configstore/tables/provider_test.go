@@ -24,3 +24,16 @@ func TestTableProviderBeforeSave_ClearsRemovedCustomProviderConfig(t *testing.T)
 	require.NoError(t, p.BeforeSave(nil))
 	assert.Empty(t, p.CustomProviderConfigJSON)
 }
+
+func TestLocalAccountConfigPersistence(t *testing.T) {
+	p := &TableProvider{Name: "codebuddy", LocalAccountConfig: &schemas.LocalAccountConfig{CredentialFile: "/tmp/account.info", PromptCompat: schemas.Ptr(false), DataDir: "must-not-export"}}
+	require.NoError(t, p.BeforeSave(nil))
+	require.NotContains(t, p.LocalAccountConfigJSON, "must-not-export")
+	restored := &TableProvider{LocalAccountConfigJSON: p.LocalAccountConfigJSON}
+	require.NoError(t, restored.AfterFind(nil))
+	require.Equal(t, "/tmp/account.info", restored.LocalAccountConfig.CredentialFile)
+	require.False(t, *restored.LocalAccountConfig.PromptCompat)
+	p.LocalAccountConfig = nil
+	require.NoError(t, p.BeforeSave(nil))
+	require.Empty(t, p.LocalAccountConfigJSON)
+}

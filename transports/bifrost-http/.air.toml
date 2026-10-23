@@ -1,11 +1,13 @@
-root = "../.."
+# Invoked from the repository root by make dev. Air's root controls watching;
+# it does not change the working directory of the application.
+root = "."
 testdata_dir = "testdata"
 tmp_dir = "transports/bifrost-http/tmp"
 
 [build]
 args_bin = []
-bin = "tmp/main"
-cmd = "go build -tags dev -o ./tmp/main ."
+bin = "transports/bifrost-http/tmp/main"
+cmd = "go build -tags dev -o ./transports/bifrost-http/tmp/main ./transports/bifrost-http"
 delay = 1000
 exclude_dir = [
     "assets",

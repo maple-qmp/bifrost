@@ -628,6 +628,8 @@
       "type": "object",
       "description": "AI provider configurations",
       "properties": {
+        "chatgpt": { "$ref": "#/$defs/provider_with_local_account" },
+        "codebuddy": { "$ref": "#/$defs/provider_with_local_account" },
         "openai": {
           "$ref": "#/$defs/provider"
         },
@@ -1658,6 +1660,7 @@
               "concurrency_and_buffer_size": {
                 "$ref": "#/$defs/concurrency_and_buffer_size"
               },
+              "local_account_config": { "$ref": "#/$defs/local_account_config" },
               "openai_config": {
                 "$ref": "#/$defs/openai_config"
               },
@@ -5387,6 +5390,74 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "provider_with_local_account": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "network_config": {
+              "$ref": "#/$defs/provider/properties/network_config"
+            },
+            "concurrency_and_buffer_size": {
+              "$ref": "#/$defs/provider/properties/concurrency_and_buffer_size"
+            },
+            "proxy_config": {
+              "$ref": "#/$defs/provider/properties/proxy_config"
+            },
+            "send_back_raw_request": {
+              "$ref": "#/$defs/provider/properties/send_back_raw_request"
+            },
+            "send_back_raw_response": {
+              "$ref": "#/$defs/provider/properties/send_back_raw_response"
+            },
+            "store_raw_request_response": {
+              "$ref": "#/$defs/provider/properties/store_raw_request_response"
+            },
+            "ignore_provider_cost": {
+              "$ref": "#/$defs/provider/properties/ignore_provider_cost"
+            },
+            "prompt_cache": {
+              "$ref": "#/$defs/provider/properties/prompt_cache"
+            },
+            "injected_tools": {
+              "$ref": "#/$defs/provider/properties/injected_tools"
+            },
+            "local_account_config": {
+              "$ref": "#/$defs/provider/properties/local_account_config"
+            },
+            "keys": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "maxItems": 0,
+              "description": "Account providers use local credentials and do not accept API keys."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "custom_provider_config"
+          ],
+          "properties": {
+            "custom_provider_config": {
+              "$ref": "#/$defs/custom_provider_config"
+            }
+          }
+        }
+      ]
+    },
+
+    "local_account_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "credential_file": { "type": "string", "description": "Local account credential file; defaults to Bifrost's accounts directory for ChatGPT and desktop discovery for CodeBuddy." },
+        "prompt_compat": { "type": "boolean", "default": true, "description": "Apply CodeBuddy system prompt compatibility rules." }
+      }
+    },
     "global_proxy_config": {
       "type": "object",
       "description": "Global outbound proxy (the dashboard's proxy settings page) and which components use it. Under source_of_truth \"split\" it is applied when new or changed and dashboard edits are kept otherwise; under \"config.json\" it is applied on every startup. Omit to manage the proxy from the dashboard. Not the same as a provider's own proxy_config.",
@@ -7715,6 +7786,7 @@
           "minItems": 1,
           "description": "API keys for this provider"
         },
+        "local_account_config": { "$ref": "#/$defs/local_account_config" },
         "openai_config": {
           "$ref": "#/$defs/openai_config"
         },

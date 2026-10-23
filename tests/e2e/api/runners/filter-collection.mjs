@@ -149,6 +149,8 @@ if (!PLAN && !PROVIDER && !FEATURE_PARTS.length && !FEATURE_ANY_PARTS.length && 
 }
 
 const PROVIDER_KEYWORDS = {
+  chatgpt: ["chatgpt local account", "chatgpt/"],
+  codebuddy: ["codebuddy local account", "codebuddy/"],
   openai: ["openai", "/openai", "gpt-", "o3", "o1"],
   anthropic: ["anthropic", "claude-"],
   bedrock: ["bedrock", "/bedrock"],

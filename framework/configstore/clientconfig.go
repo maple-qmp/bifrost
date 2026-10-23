@@ -658,6 +658,7 @@ type ProviderConfig struct {
 	IgnoreProviderCost       bool                              `json:"ignore_provider_cost"`                  // Ignore provider-reported usage.cost and price from Bifrost's catalog
 	CustomProviderConfig     *schemas.CustomProviderConfig     `json:"custom_provider_config,omitempty"`      // Custom provider configuration
 	OpenAIConfig             *schemas.OpenAIConfig             `json:"openai_config,omitempty"`               // OpenAI-specific configuration
+	LocalAccountConfig       *schemas.LocalAccountConfig       `json:"local_account_config,omitempty"`        // Local account credential reference and compatibility settings
 	PromptCache              *schemas.PromptCacheConfig        `json:"prompt_cache,omitempty"`                // Prompt-cache breakpoint injection
 	InjectedTools            []schemas.InjectedTool            `json:"injected_tools,omitempty"`              // MCP tools injected and auto-executed server side
 	ConfigHash               string                            `json:"config_hash,omitempty"`                 // Hash of config.json version, used for change detection
@@ -681,6 +682,7 @@ func (p *ProviderConfig) Redacted() *ProviderConfig {
 		IgnoreProviderCost:       p.IgnoreProviderCost,
 		CustomProviderConfig:     p.CustomProviderConfig,
 		OpenAIConfig:             p.OpenAIConfig,
+		LocalAccountConfig:       p.LocalAccountConfig,
 		PromptCache:              p.PromptCache,
 		InjectedTools:            p.InjectedTools,
 		ConfigHash:               p.ConfigHash,
@@ -954,6 +956,13 @@ func (p *ProviderConfig) GenerateConfigHash(providerName string) (string, error)
 		hash.Write(data)
 	}
 
+	if p.LocalAccountConfig != nil {
+		data, err := schemas.MarshalSorted(p.LocalAccountConfig)
+		if err != nil {
+			return "", err
+		}
+		hash.Write(data)
+	}
 	// Hash OpenAIConfig
 	if p.OpenAIConfig != nil {
 		data, err := sonic.Marshal(p.OpenAIConfig)

@@ -76,6 +76,8 @@ const (
 	Fireworks     ModelProvider = "fireworks"
 	Sarvam        ModelProvider = "sarvam"
 	Wafer         ModelProvider = "wafer"
+	ChatGPT       ModelProvider = "chatgpt"
+	CodeBuddy     ModelProvider = "codebuddy"
 	GithubCopilot ModelProvider = "github-copilot"
 	Databricks    ModelProvider = "databricks"
 	Cloudflare    ModelProvider = "cloudflare"
@@ -128,6 +130,8 @@ var StandardProviders = []ModelProvider{
 	Fireworks,
 	Sarvam,
 	Wafer,
+	ChatGPT,
+	CodeBuddy,
 	GithubCopilot,
 	Databricks,
 	Cloudflare,

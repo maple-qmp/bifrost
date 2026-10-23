@@ -15,6 +15,11 @@ LOCAL ?=
 DEBUG ?=
 COMPAT ?=
 
+# go install writes outside PATH on many machines. Resolve Air's installed path
+# explicitly so installation and startup use the same executable.
+GO_INSTALL_BIN = $(shell bin="$$(go env GOBIN)"; if [ -z "$$bin" ]; then workspace="$$(go env GOPATH)"; bin="$${workspace%%:*}/bin"; fi; printf '%s' "$$bin")
+AIR ?= $(shell command -v air 2>/dev/null || printf '%s/air' "$(GO_INSTALL_BIN)")
+
 # Colors for output
 RED=\033[0;31m
 GREEN=\033[0;32m
@@ -118,7 +123,8 @@ install-ui: cleanup-enterprise
 	@$(ECHO) "$(GREEN)UI deps are in sync$(NC)"
 
 install-air: ## Install air for hot reloading (if not already installed)
-	@which air > /dev/null || ($(ECHO) "$(YELLOW)Installing air for hot reloading...$(NC)" && go install github.com/air-verse/air@latest)
+	@test -x "$(AIR)" || ($(ECHO) "$(YELLOW)Installing air for hot reloading...$(NC)" && go install github.com/air-verse/air@latest)
+	@test -x "$(AIR)" || ($(ECHO) "$(RED)Air executable not found: $(AIR)$(NC)" && exit 1)
 	@$(ECHO) "$(GREEN)Air is ready$(NC)"
 
 install-pulse: ## Install pulse for hot reloading (if not already installed)
@@ -240,7 +246,7 @@ dev: install-ui install-air setup-workspace $(if $(DEBUG),install-delve) ## Star
 	if [ -n "$(DEBUG)" ]; then \
 		$(ECHO) "$(CYAN)Starting with air + delve debugger on port 2345...$(NC)"; \
 		$(ECHO) "$(YELLOW)Attach your debugger to localhost:2345$(NC)"; \
-		(cd transports/bifrost-http && BIFROST_UI_DEV=true air -c .air.debug.toml -- \
+		(BIFROST_UI_DEV=true "$(AIR)" -c transports/bifrost-http/.air.debug.toml -- \
 			-host "$(HOST)" \
 			-port "$(PORT)" \
 			-log-style "$(LOG_STYLE)" \
@@ -248,7 +254,7 @@ dev: install-ui install-air setup-workspace $(if $(DEBUG),install-delve) ## Star
 			$(if $(PROMETHEUS_LABELS),-prometheus-labels "$(PROMETHEUS_LABELS)") \
 			$(if $(APP_DIR),-app-dir "$(abspath $(APP_DIR))")) & \
 	else \
-		(cd transports/bifrost-http && BIFROST_UI_DEV=true air -c .air.toml -- \
+		(BIFROST_UI_DEV=true "$(AIR)" -c transports/bifrost-http/.air.toml -- \
 			-host "$(HOST)" \
 			-port "$(PORT)" \
 			-log-style "$(LOG_STYLE)" \

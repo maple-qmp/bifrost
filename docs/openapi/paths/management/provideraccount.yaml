@@ -1,0 +1,193 @@
+# Local-only account operations. Inference continues through the ordinary gateway APIs.
+status:
+  get:
+    operationId: getProviderAccount
+    summary: Read local account state
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/management/providers.yaml#/LocalAccountStatus'
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured
+disconnect:
+  delete:
+    operationId: disconnectProviderAccount
+    summary: Disconnect a local account
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/management/providers.yaml#/LocalAccountStatus'
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured
+login:
+  post:
+    operationId: loginProviderAccount
+    summary: Start ChatGPT authorization
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, url]
+              properties:
+                session_id:
+                  type: string
+                url:
+                  type: string
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured
+connect:
+  post:
+    operationId: connectProviderAccount
+    summary: Connect existing local credentials
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/management/providers.yaml#/LocalAccountStatus'
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured
+detect:
+  post:
+    operationId: detectProviderAccount
+    summary: Detect or refresh desktop credentials
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/management/providers.yaml#/LocalAccountStatus'
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured
+callback:
+  post:
+    operationId: completeProviderAccount
+    summary: Submit a ChatGPT callback URL
+    description: Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.
+    tags: [Providers]
+    security:
+      - ManagementBearerAuth: []
+      - BasicAuth: []
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [chatgpt, codebuddy]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [session_id, url]
+            properties:
+              session_id:
+                type: string
+              url:
+                type: string
+    responses:
+      '200':
+        description: Successful account operation
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/management/providers.yaml#/LocalAccountStatus'
+      '400':
+        description: Account operation failed or credentials require reauthorization
+      '403':
+        description: Remote or cross-origin account operation is not allowed
+      '404':
+        description: Account provider is not configured

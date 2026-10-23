@@ -43304,6 +43304,356 @@
         }
       }
     },
+    "/api/providers/{provider}/account": {
+      "get": {
+        "operationId": "getProviderAccount",
+        "summary": "Read local account state",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disconnectProviderAccount",
+        "summary": "Disconnect a local account",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      }
+    },
+    "/api/providers/{provider}/account/login": {
+      "post": {
+        "operationId": "loginProviderAccount",
+        "summary": "Start ChatGPT authorization",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "session_id",
+                    "url"
+                  ],
+                  "properties": {
+                    "session_id": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      }
+    },
+    "/api/providers/{provider}/account/connect": {
+      "post": {
+        "operationId": "connectProviderAccount",
+        "summary": "Connect existing local credentials",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      }
+    },
+    "/api/providers/{provider}/account/detect": {
+      "post": {
+        "operationId": "detectProviderAccount",
+        "summary": "Detect or refresh desktop credentials",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      }
+    },
+    "/api/providers/{provider}/account/callback": {
+      "post": {
+        "operationId": "completeProviderAccount",
+        "summary": "Submit a ChatGPT callback URL",
+        "description": "Requires a same-origin loopback connection and provider management permissions. ChatGPT authorization expires after five minutes.",
+        "tags": [
+          "Providers"
+        ],
+        "security": [
+          {
+            "ManagementBearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chatgpt",
+                "codebuddy"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "url"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful account operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account operation failed or credentials require reauthorization"
+          },
+          "403": {
+            "description": "Remote or cross-origin account operation is not allowed"
+          },
+          "404": {
+            "description": "Account provider is not configured"
+          }
+        }
+      }
+    },
     "/api/providers/{provider}/keys": {
       "get": {
         "operationId": "listProviderKeys",
@@ -112087,6 +112437,8 @@
           "opencode-go",
           "opencode-zen",
           "openai",
+          "chatgpt",
+          "codebuddy",
           "parasail",
           "perplexity",
           "sgl",
@@ -126916,6 +127268,53 @@
           }
         }
       },
+      "LocalAccountConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "credential_file": {
+            "type": "string",
+            "description": "Local credential file. CodeBuddy discovers desktop credentials when omitted."
+          },
+          "prompt_compat": {
+            "type": "boolean",
+            "default": true,
+            "description": "Apply CodeBuddy system prompt compatibility rules."
+          }
+        }
+      },
+      "LocalAccountStatus": {
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "identity": {
+            "type": "string",
+            "description": "Opaque account identifier, never a credential."
+          },
+          "expires_at": {
+            "type": "integer",
+            "description": "Access-token expiration as Unix milliseconds."
+          },
+          "login_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "exchanging",
+              "completed",
+              "failed",
+              "expired"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
       "ProviderResponse": {
         "type": "object",
         "description": "Provider configuration response",
@@ -127071,6 +127470,9 @@
                 }
               }
             }
+          },
+          "local_account_config": {
+            "$ref": "#/components/schemas/LocalAccountConfig"
           },
           "prompt_cache": {
             "type": "object",
@@ -127346,6 +127748,9 @@
               }
             }
           },
+          "local_account_config": {
+            "$ref": "#/components/schemas/LocalAccountConfig"
+          },
           "prompt_cache": {
             "type": "object",
             "description": "Synthesize prompt-cache breakpoints for requests that carry none. Off by default. Requests that already carry their own cache markers are never modified.",
@@ -127577,6 +127982,9 @@
                 }
               }
             }
+          },
+          "local_account_config": {
+            "$ref": "#/components/schemas/LocalAccountConfig"
           },
           "prompt_cache": {
             "type": "object",

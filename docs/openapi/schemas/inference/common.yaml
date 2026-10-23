@@ -18,6 +18,8 @@ ModelProvider:
     - opencode-go
     - opencode-zen
     - openai
+    - chatgpt
+    - codebuddy
     - parasail
     - perplexity
     - sgl

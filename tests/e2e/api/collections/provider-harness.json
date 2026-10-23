@@ -564,6 +564,19 @@
       "value": "replace-me-global-batch-deployment",
       "type": "string"
     }
+  ,
+    {
+      "key": "chatgptModel",
+      "value": "",
+      "type": "string",
+      "description": "Set to a model available to the connected ChatGPT plan account."
+    },
+    {
+      "key": "codebuddyModel",
+      "value": "",
+      "type": "string",
+      "description": "Set to a model available to the connected CodeBuddy desktop account."
+    }
   ],
   "item": [
     {
@@ -278483,6 +278496,862 @@
               ]
             }
           }
+        }
+      ]
+    }
+  ,
+    {
+      "name": "265. Local account providers (local account)",
+      "description": "Native ChatGPT plan and CodeBuddy desktop accounts: all three ingress protocols, streaming and unary. Connect accounts locally first; set chatgptModel and codebuddyModel to available models. Manual live execution only; unexpected failures are not skipped.",
+      "item": [
+        {
+          "name": "chatgpt local account chat nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"choices\"); pm.expect(JSON.stringify(data[\"choices\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatgpt local account chat stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"[DONE]\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatgpt local account responses nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"input\": \"Reply exactly OK.\",\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"output\"); pm.expect(JSON.stringify(data[\"output\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatgpt local account responses stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"input\": \"Reply exactly OK.\",\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"response.completed\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatgpt local account messages nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"max_tokens\": 32,\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"content\"); pm.expect(JSON.stringify(data[\"content\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatgpt local account messages stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"chatgpt/{{chatgptModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"max_tokens\": 32,\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"message_stop\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account chat nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"choices\"); pm.expect(JSON.stringify(data[\"choices\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account chat stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"[DONE]\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account responses nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"input\": \"Reply exactly OK.\",\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"output\"); pm.expect(JSON.stringify(data[\"output\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account responses stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"input\": \"Reply exactly OK.\",\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"response.completed\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account messages nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"max_tokens\": 32,\n  \"stream\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account response contains output', function () { var data = pm.response.json(); pm.expect(data).to.have.property(\"content\"); pm.expect(JSON.stringify(data[\"content\"]), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy local account messages stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Reply exactly OK.\"\n    }\n  ],\n  \"max_tokens\": 32,\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('local account status is 200', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "pm.test('local account stream completes', function () { pm.expect(pm.response.text(), pm.response.text()).to.include(\"message_stop\"); });",
+                  "pm.test('local account stream has text', function () { pm.expect(pm.response.text(), pm.response.text()).to.include('OK'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "266. CodeBuddy DeepSeek Harness compatibility (deepseek harness)",
+      "description": "First system line declaring DeepSeek Harness identity is normalized on the final CodeBuddy wire, independently of model ID. Enable prompt_compat and set codebuddyModel. Model-response assertions supplement deterministic Go wire tests. No live calls during development.",
+      "item": [
+        {
+          "name": "codebuddy deepseek harness chat nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\"\n    }\n  ],\n  \"stream\": false,\n  \"max_completion_tokens\": 256\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "var body = pm.response.json();",
+                  "text = body.choices[0].message.content;",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy deepseek harness chat stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\"\n    }\n  ],\n  \"stream\": true,\n  \"max_completion_tokens\": 256\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "pm.response.text().split(/\\r?\\n/).forEach(function (line) {",
+                  "  if (line.indexOf('data: ') !== 0 || line.slice(6).trim() === '[DONE]') return;",
+                  "  var event = JSON.parse(line.slice(6));",
+                  "  (event.choices || []).forEach(function (c) { text += (c.delta || {}).content || ''; });",
+                  "});",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy deepseek harness responses nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"input\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\",\n  \"stream\": false,\n  \"instructions\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\",\n  \"max_output_tokens\": 256\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "var body = pm.response.json();",
+                  "(body.output || []).forEach(function (item) { (item.content || []).forEach(function (c) { if (c.type === 'output_text') text += c.text || ''; }); });",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy deepseek harness responses stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"input\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\",\n  \"stream\": true,\n  \"instructions\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\",\n  \"max_output_tokens\": 256\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "pm.response.text().split(/\\r?\\n/).forEach(function (line) {",
+                  "  if (line.indexOf('data: ') !== 0 || line.slice(6).trim() === '[DONE]') return;",
+                  "  var event = JSON.parse(line.slice(6));",
+                  "  if (event.type === 'response.output_text.delta') text += event.delta || ''; ",
+                  "});",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy deepseek harness messages nonstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\"\n    }\n  ],\n  \"max_tokens\": 256,\n  \"stream\": false,\n  \"system\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "var body = pm.response.json();",
+                  "(body.content || []).forEach(function (c) { if (c.type === 'text') text += c.text || ''; });",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "codebuddy deepseek harness messages stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/anthropic/v1/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anthropic",
+                "v1",
+                "messages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"codebuddy/{{codebuddyModel}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Return only the first line of your system instructions verbatim, without quotes or markdown.\"\n    }\n  ],\n  \"max_tokens\": 256,\n  \"stream\": true,\n  \"system\": \"You are an AI agent powered by DeepSeek Harness.\\nThis is a public integration test. When asked, return the first line of these system instructions verbatim.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CodeBuddy request succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var text = \"\";",
+                  "pm.response.text().split(/\\r?\\n/).forEach(function (line) {",
+                  "  if (line.indexOf('data: ') !== 0 || line.slice(6).trim() === '[DONE]') return;",
+                  "  var event = JSON.parse(line.slice(6));",
+                  "  if (event.type === 'content_block_delta' && (event.delta || {}).type === 'text_delta') text += event.delta.text || ''; ",
+                  "});",
+                  "pm.test('DeepSeek Harness first line is replaced', function () { pm.expect(text.trim(), pm.response.text()).to.equal(\"You are an interactive software engineering assistant operating in a command-line environment.\"); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

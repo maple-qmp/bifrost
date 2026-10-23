@@ -1,5 +1,6 @@
 import { Database, Landmark, Link2, Network, Shuffle, Workflow } from "lucide-react";
 import { useTheme } from "next-themes";
+import type { ReactElement } from "react";
 import { cn } from "../utils";
 
 type IconSize = "xs" | "sm" | "md" | "lg" | "xl" | number;
@@ -424,6 +425,12 @@ export const ProviderIcons = {
 		);
 	},
 
+	chatgpt: (props: IconProps): ReactElement => <ProviderIcons.openai {...props} />,
+	codebuddy: ({ size = "md", className = "" }: IconProps) => (
+		<span className={className} style={{ width: resolveSize(size), height: resolveSize(size) }} aria-label="CodeBuddy">
+			CB
+		</span>
+	),
 	"opencode-go": ({ size = "md", className = "" }: IconProps) => {
 		const resolvedSize = resolveSize(size);
 

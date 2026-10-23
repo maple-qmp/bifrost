@@ -21,9 +21,10 @@ type TableProvider struct {
 	ConcurrencyBufferJSON    string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.ConcurrencyAndBufferSize
 	ProxyConfigJSON          string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.ProxyConfig
 	CustomProviderConfigJSON string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.CustomProviderConfig
-	OpenAIConfigJSON         string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.OpenAIConfig
-	PromptCacheJSON          string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.PromptCacheConfig
-	InjectedToolsJSON        string    `gorm:"type:text" json:"-"`                                // JSON serialized schemas.InjectedToolsConfig
+	LocalAccountConfigJSON   string    `gorm:"type:text" json:"-"`
+	OpenAIConfigJSON         string    `gorm:"type:text" json:"-"` // JSON serialized schemas.OpenAIConfig
+	PromptCacheJSON          string    `gorm:"type:text" json:"-"` // JSON serialized schemas.PromptCacheConfig
+	InjectedToolsJSON        string    `gorm:"type:text" json:"-"` // JSON serialized schemas.InjectedToolsConfig
 	SendBackRawRequest       bool      `json:"send_back_raw_request"`
 	SendBackRawResponse      bool      `json:"send_back_raw_response"`
 	StoreRawRequestResponse  bool      `json:"store_raw_request_response"`
@@ -42,6 +43,7 @@ type TableProvider struct {
 	// Custom provider fields
 	CustomProviderConfig *schemas.CustomProviderConfig `gorm:"-" json:"custom_provider_config,omitempty"`
 	OpenAIConfig         *schemas.OpenAIConfig         `gorm:"-" json:"openai_config,omitempty"`
+	LocalAccountConfig   *schemas.LocalAccountConfig   `gorm:"-" json:"local_account_config,omitempty"`
 	PromptCache          *schemas.PromptCacheConfig    `gorm:"-" json:"prompt_cache,omitempty"`
 	InjectedTools        []schemas.InjectedTool        `gorm:"-" json:"injected_tools,omitempty"`
 
@@ -106,6 +108,15 @@ func (p *TableProvider) BeforeSave(tx *gorm.DB) error {
 		p.CustomProviderConfigJSON = string(data)
 	} else {
 		p.CustomProviderConfigJSON = ""
+	}
+	if p.LocalAccountConfig != nil {
+		data, err := schemas.MarshalSorted(p.LocalAccountConfig)
+		if err != nil {
+			return err
+		}
+		p.LocalAccountConfigJSON = string(data)
+	} else {
+		p.LocalAccountConfigJSON = ""
 	}
 	if p.OpenAIConfig != nil {
 		data, err := json.Marshal(p.OpenAIConfig)
@@ -197,6 +208,13 @@ func (p *TableProvider) AfterFind(tx *gorm.DB) error {
 		p.CustomProviderConfig = &customConfig
 	}
 
+	if p.LocalAccountConfigJSON != "" {
+		var cfg schemas.LocalAccountConfig
+		if err := json.Unmarshal([]byte(p.LocalAccountConfigJSON), &cfg); err != nil {
+			return err
+		}
+		p.LocalAccountConfig = &cfg
+	}
 	if p.OpenAIConfigJSON != "" {
 		var openaiConfig schemas.OpenAIConfig
 		if err := json.Unmarshal([]byte(p.OpenAIConfigJSON), &openaiConfig); err != nil {

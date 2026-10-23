@@ -262,3 +262,9 @@ ui/app/routeTree.gen.ts
 bifrost-migration-cli
 
 tests/e2e/clis/reports
+# Local provider credentials generated beneath an application data directory.
+**/accounts/chatgpt.json
+**/accounts/host.json
+**/accounts/registration.json
+**/accounts/*.disconnected
+.bifrost-account-*

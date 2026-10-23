@@ -20,6 +20,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	bifrost "github.com/maximhq/bifrost/core"
+	"github.com/maximhq/bifrost/core/providers/localaccount"
 	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/maximhq/bifrost/transports/v2/bifrost-http/lib"
 	"github.com/tidwall/gjson"
@@ -426,6 +427,12 @@ func (h *ProviderHandler) refreshProviderModels(ctx *fasthttp.RequestCtx) {
 		}
 		SendError(ctx, fasthttp.StatusInternalServerError, fmt.Sprintf("Failed to get provider config: %v", err))
 		return
+	}
+
+	if schemas.IsLocalAccountProvider(provider) && h.client != nil {
+		if p, ok := h.client.GetProviderByKey(provider).(*localaccount.Provider); ok {
+			p.InvalidateModels()
+		}
 	}
 
 	if err := h.modelsManager.RefreshLiveModelsForAllKeys(ctx, provider); err != nil {

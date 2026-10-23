@@ -798,3 +798,45 @@ func TestWrapConvertedStreamPostHookRunnerMarksConvertedChunks(t *testing.T) {
 		})
 	}
 }
+
+var localAccountBenchmarkProvider = schemas.OpenAI
+var localAccountBenchmarkResult bool
+
+// Compare the old API-key gate with the account-aware gate on the ordinary OpenAI path.
+func BenchmarkLocalAccountKeyRequirement(b *testing.B) {
+	b.Run("before", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			localAccountBenchmarkResult = providerRequiresKey(nil)
+		}
+	})
+	b.Run("after", func(b *testing.B) {
+		requiresKey := providerUsesKey(localAccountBenchmarkProvider, nil)
+		b.ReportAllocs()
+		for b.Loop() {
+			localAccountBenchmarkResult = requiresKey
+		}
+	})
+}
+
+func TestLocalAccountProviderClassification(t *testing.T) {
+	for _, provider := range []schemas.ModelProvider{schemas.ChatGPT, schemas.CodeBuddy} {
+		if !schemas.IsLocalAccountProvider(provider) {
+			t.Fatalf("%s must use local account credentials", provider)
+		}
+	}
+	if schemas.IsLocalAccountProvider(schemas.OpenAI) {
+		t.Fatal("ordinary OpenAI API keys must continue through key selection")
+	}
+}
+
+func TestLocalAccountLegacyCustomProviderKeepsKeySelection(t *testing.T) {
+	for _, name := range []schemas.ModelProvider{schemas.ChatGPT, schemas.CodeBuddy} {
+		if !providerUsesKey(name, &schemas.CustomProviderConfig{BaseProviderType: schemas.OpenAI}) {
+			t.Fatalf("custom %s must continue using OpenAI keys", name)
+		}
+		if providerUsesKey(name, nil) {
+			t.Fatalf("native %s must use account credentials", name)
+		}
+	}
+}

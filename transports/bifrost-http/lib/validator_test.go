@@ -4133,3 +4133,16 @@ func TestValidateConfigSchema_MCPOpenAPIClient(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalAccountConfigSchema(t *testing.T) {
+	for _, config := range []string{
+		`{"providers":{"chatgpt":{},"codebuddy":{"local_account_config":{"credential_file":"/tmp/account.info","prompt_compat":false}}}}`,
+		`{"providers":{"chatgpt":{"keys":[]}}}`,
+		`{"providers":{"chatgpt":{"keys":null}}}`,
+		`{"providers":{"chatgpt":{"custom_provider_config":{"base_provider_type":"openai","is_key_less":true}}}}`,
+	} {
+		if err := ValidateConfigSchema([]byte(config), loadLocalSchema(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

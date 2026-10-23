@@ -36,6 +36,7 @@ import (
 	"github.com/maximhq/bifrost/core/providers/githubcopilot"
 	"github.com/maximhq/bifrost/core/providers/groq"
 	"github.com/maximhq/bifrost/core/providers/huggingface"
+	"github.com/maximhq/bifrost/core/providers/localaccount"
 	"github.com/maximhq/bifrost/core/providers/minimax"
 	"github.com/maximhq/bifrost/core/providers/mistral"
 	"github.com/maximhq/bifrost/core/providers/nebius"
@@ -4185,6 +4186,10 @@ func (bifrost *Bifrost) RemoveProvider(providerKey schemas.ModelProvider) error 
 	// Step 3b: Final drain sweep — see drainQueueWithErrors for full explanation.
 	bifrost.drainQueueWithErrors(pq)
 
+	if p, ok := bifrost.GetProviderByKey(providerKey).(*localaccount.Provider); ok {
+		p.Close()
+	}
+
 	// Step 3c: Wait for retired worker generations from earlier provider updates.
 	// They are no longer tracked in bifrost.waitGroups after a new generation is
 	// published, but removing the provider must still wait for their in-flight work.
@@ -4294,6 +4299,7 @@ func (bifrost *Bifrost) UpdateProvider(providerKey schemas.ModelProvider) error 
 	// workers start so all fresh worker executions use the updated provider.
 	bifrost.logger.Debug("atomically replacing provider instance in providers slice for %s", providerKey)
 
+	var retiredAccountProvider *localaccount.Provider
 	replacementAttempts := 0
 	maxReplacementAttempts := 100 // Prevent infinite loops in high-contention scenarios
 
@@ -4317,6 +4323,7 @@ func (bifrost *Bifrost) UpdateProvider(providerKey schemas.ModelProvider) error 
 				newSlice = append(newSlice, existingProvider)
 			} else {
 				oldProviderFound = true
+				retiredAccountProvider, _ = existingProvider.(*localaccount.Provider)
 			}
 		}
 
@@ -4429,10 +4436,16 @@ transferComplete:
 			defer bifrost.oldWorkerCleanups.Done()
 			defer cleanupWg.Done()
 			wg.Wait()
+			if retiredAccountProvider != nil {
+				retiredAccountProvider.Close()
+			}
 			bifrost.logger.Debug("all old workers for provider %s have stopped", key)
 			bifrost.drainQueueWithErrors(pq)
 		}(oldPq, oldWaitGroup, retiredWaitGroup, providerKey)
 	} else {
+		if retiredAccountProvider != nil {
+			retiredAccountProvider.Close()
+		}
 		bifrost.drainQueueWithErrors(oldPq)
 	}
 
@@ -4997,6 +5010,8 @@ func (bifrost *Bifrost) createBaseProvider(providerKey schemas.ModelProvider, co
 	}
 
 	switch targetProviderKey {
+	case schemas.ChatGPT, schemas.CodeBuddy:
+		return localaccount.NewProvider(targetProviderKey, config, bifrost.logger)
 	case schemas.OpenAI:
 		return openai.NewOpenAIProvider(config, bifrost.logger), nil
 	case schemas.Anthropic:
@@ -7927,6 +7942,8 @@ func applyProviderProxySignal(ctx *schemas.BifrostContext, config *schemas.Provi
 // It manages retries, error handling, and response processing.
 func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas.ProviderConfig, pq *ProviderQueue, waitGroup *sync.WaitGroup) {
 	defer waitGroup.Done()
+	// Compute credential mode once per worker; ordinary requests only read this boolean.
+	requiresKey := providerUsesKey(provider.GetProviderKey(), config.CustomProviderConfig)
 
 	// Reusable timer for the response/error/stream handoff guard below. One timer per
 	// (long-lived) worker, reset per use, instead of a fresh time.After on every request:
@@ -8010,7 +8027,7 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		// batch/file/container operations that manage their own key lists.
 		var keyProvider func(usedKeyIDs, deadKeyIDs map[string]bool) (schemas.Key, error)
 
-		if providerRequiresKey(config.CustomProviderConfig) {
+		if requiresKey {
 			// ListModels needs all enabled/supported keys so providers can aggregate
 			// and report per-key statuses (KeyStatuses).
 			if req.RequestType == schemas.ListModelsRequest {
@@ -10937,6 +10954,14 @@ func (bifrost *Bifrost) Shutdown() {
 		bifrost.drainQueueWithErrors(value.(*ProviderQueue))
 		return true
 	})
+
+	if providers := bifrost.providers.Load(); providers != nil {
+		for _, provider := range *providers {
+			if p, ok := provider.(*localaccount.Provider); ok {
+				p.Close()
+			}
+		}
+	}
 
 	// Cleanup MCP manager
 	if bifrost.MCPManager != nil {

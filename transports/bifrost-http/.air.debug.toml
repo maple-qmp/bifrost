@@ -1,13 +1,14 @@
-root = "../.."
+# Keep relative config paths identical to make dev and the provider harness.
+root = "."
 testdata_dir = "testdata"
 tmp_dir = "transports/bifrost-http/tmp"
 
 [build]
 args_bin = []
-bin = "tmp/main"
+bin = "transports/bifrost-http/tmp/main"
 # Build with debug flags: -N disables optimizations, -l disables inlining
 # Note: We don't set GOWORK=off so it uses the workspace go.work file
-cmd = "go build -tags dev -gcflags='all=-N -l' -o ./tmp/main ."
+cmd = "go build -tags dev -gcflags='all=-N -l' -o ./transports/bifrost-http/tmp/main ./transports/bifrost-http"
 delay = 1000
 exclude_dir = [
     "assets",
@@ -28,7 +29,7 @@ exclude_regex = ["_test.go"]
 exclude_unchanged = false
 follow_symlink = false
 # Run binary via delve debugger in headless mode on port 2345
-full_bin = "dlv exec ./tmp/main --listen=127.0.0.1:2345 --headless=true --api-version=2 --accept-multiclient --log --"
+full_bin = "dlv exec ./transports/bifrost-http/tmp/main --listen=127.0.0.1:2345 --headless=true --api-version=2 --accept-multiclient --log --"
 watch_dirs = ["."]
 include_dir = []
 include_ext = ["go", "tpl", "tmpl", "html"]

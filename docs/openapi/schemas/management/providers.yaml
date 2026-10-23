@@ -498,6 +498,8 @@ ProviderResponse:
       type: boolean
     custom_provider_config:
       $ref: '#/CustomProviderConfig'
+    local_account_config:
+      $ref: '#/LocalAccountConfig'
     prompt_cache:
       $ref: '#/PromptCacheConfig'
     injected_tools:
@@ -547,6 +549,8 @@ AddProviderRequest:
       type: boolean
     custom_provider_config:
       $ref: '#/CustomProviderConfig'
+    local_account_config:
+      $ref: '#/LocalAccountConfig'
     prompt_cache:
       $ref: '#/PromptCacheConfig'
     injected_tools:
@@ -634,6 +638,8 @@ UpdateProviderRequest:
       type: boolean
     custom_provider_config:
       $ref: '#/CustomProviderConfig'
+    local_account_config:
+      $ref: '#/LocalAccountConfig'
     prompt_cache:
       $ref: '#/PromptCacheConfig'
     injected_tools:
@@ -742,3 +748,33 @@ ListModelDetailsResponse:
         $ref: '#/ModelDetailsResponse'
     total:
       type: integer
+
+LocalAccountConfig:
+  type: object
+  additionalProperties: false
+  properties:
+    credential_file:
+      type: string
+      description: Local credential file. CodeBuddy discovers desktop credentials when omitted.
+    prompt_compat:
+      type: boolean
+      default: true
+      description: Apply CodeBuddy system prompt compatibility rules.
+
+LocalAccountStatus:
+  type: object
+  required: [connected]
+  properties:
+    connected:
+      type: boolean
+    identity:
+      type: string
+      description: Opaque account identifier, never a credential.
+    expires_at:
+      type: integer
+      description: Access-token expiration as Unix milliseconds.
+    login_state:
+      type: string
+      enum: [pending, exchanging, completed, failed, expired]
+    error:
+      type: string

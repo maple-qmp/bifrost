@@ -6918,3 +6918,12 @@ func TestCalculateCostForUsage_LiveVoiceDuration(t *testing.T) {
 			"usage carried on an error is priced the same as successful voice usage")
 	}
 }
+
+func TestLocalAccountChatGPTDoesNotUseAPIPrices(t *testing.T) {
+	s := testStoreWithPricing(map[string]configstoreTables.TableModelPricing{})
+	usage := &schemas.BifrostLLMUsage{PromptTokens: 100, CompletionTokens: 10, Cost: &schemas.BifrostCost{TotalCost: 1}}
+	require.Nil(t, s.CalculateCostBreakdownForUsage(usage, schemas.ChatGPT, "gpt-test", schemas.ChatCompletionRequest, nil))
+	require.Zero(t, s.CalculateCostForUsage(usage, schemas.ChatGPT, "gpt-test", schemas.ChatCompletionRequest, nil))
+	result := &schemas.BifrostResponse{ChatResponse: &schemas.BifrostChatResponse{Usage: usage, ExtraFields: schemas.BifrostResponseExtraFields{Provider: schemas.ChatGPT, RequestType: schemas.ChatCompletionRequest}}}
+	require.Nil(t, s.CalculateCostBreakdown(result, nil))
+}

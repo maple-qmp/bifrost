@@ -1,0 +1,87 @@
+---
+title: "ChatGPT Plan and CodeBuddy"
+description: "Connect a ChatGPT plan account or local CodeBuddy desktop account to Bifrost."
+---
+
+Bifrost supports two local account providers: `chatgpt` and `codebuddy`. Both run natively in Go and require no AI-Proxy, Python, or LiteLLM service. Each provider uses one account on the computer running Bifrost.
+
+## Connect an account
+
+Open the dashboard from the Bifrost server on `localhost` or `127.0.0.1`, then open **Model Providers** and add **ChatGPT Plan** or **CodeBuddy**. Configure dashboard authentication or your setup token as usual.
+
+<Tabs>
+<Tab title="ChatGPT Plan">
+Click **Continue with ChatGPT**, then **Open ChatGPT sign-in**. Approve plan usage in the browser. The callback uses `http://127.0.0.1:1455/auth/callback`. If it cannot reach Bifrost, paste the complete callback URL into the account panel. Login expires after five minutes; a port conflict is reported before sign-in starts.
+
+Bifrost uses its own host identity and credential files under `<app-dir>/accounts/`. It does not import AI-Proxy credentials. Access tokens refresh automatically. **Reauthorize** reconnects the selected registration; **Disconnect** removes Bifrost's active ChatGPT credentials. Its registration ID and host ID are retained separately.
+
+Available models and plan usage depend on the granted permission, account, workspace, and limits. Model discovery is not an entitlement check. Bifrost preserves upstream authorization and quota errors and does not automatically fall back to an API-billed provider for those errors.
+
+See OpenAI's [sign-in documentation](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) and [current plan-route limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+</Tab>
+<Tab title="CodeBuddy">
+Sign in to the CodeBuddy desktop application on the same computer, then click **Detect account**. Bifrost discovers the most recently modified valid `.info` file in the desktop application's authentication directory:
+
+- macOS: `~/Library/Application Support/CodeBuddyExtension/Data/Public/auth`
+- Linux: `$XDG_DATA_HOME/CodeBuddyExtension/Data/Public/auth`, defaulting to `~/.local/share/...`
+- Windows: `%LOCALAPPDATA%/CodeBuddyExtension/Data/Public/auth`
+
+You can specify a credential file in the account panel. Bifrost refreshes expired tokens, preserving unknown desktop credential fields. If the desktop app changes the file during refresh, Bifrost refuses to overwrite it; retry **Detect account**. **Disconnect** disables Bifrost's account connection without deleting desktop credentials.
+
+**System prompt compatibility** defaults to enabled. It applies AI-Proxy's fingerprint, billing-header, security-term and client-brand compatibility rules only to system text in the final CodeBuddy request. User messages, assistant history and tool results remain unchanged. Disable it in the account panel when it is not needed. Upstream error `11128` is classified as `upstream_rejected_11128`; Bifrost does not guarantee that compatibility changes prevent upstream rejection.
+
+If the first system text line declares an agent powered by **DeepSeek Harness**, Bifrost replaces that identity line with `You are an interactive software engineering assistant operating in a command-line environment.` It preserves subsequent lines and does not insert a new identity line. This rule applies to any model reached through CodeBuddy while `prompt_compat` is enabled; later mentions of DeepSeek Harness remain unchanged. Native DeepSeek provider requests do not use this rule.
+</Tab>
+</Tabs>
+
+## Configuration
+
+Account providers do not accept API keys. Add the providers using the dashboard or this `config.json` fragment:
+
+```json
+{
+  "providers": {
+    "chatgpt": {},
+    "codebuddy": {
+      "local_account_config": {
+        "prompt_compat": true
+      }
+    }
+  }
+}
+```
+
+`local_account_config.credential_file` overrides the credential file. Leave it unset for Bifrost-managed ChatGPT credentials or CodeBuddy desktop discovery. Tokens are stored outside configuration exports. Bifrost-owned account directories use mode `0700` and files use `0600` on Unix. CodeBuddy refresh writes use atomic replacement and preserve the desktop file's other fields.
+
+## Send requests
+
+Choose a model in the account panel's **Available models** selector. Use an explicit provider prefix, such as `chatgpt/<model>` or `codebuddy/<model>`.
+
+Both providers support `/v1/chat/completions`, `/v1/responses`, and the Anthropic-compatible `/anthropic/v1/messages` endpoint, with streaming and ordinary JSON responses. Text, images, function tools, tool-result history and reasoning are converted through Bifrost's existing protocol converters, subject to the selected model's capabilities.
+
+ChatGPT always sends streaming Responses upstream with `store: false`. Bifrost converts system messages to developer messages, sends function definitions through `additional_tools`, and omits fields unsupported by the plan route. Supply complete input history on each request: stored conversations, `previous_response_id`, and background mode are rejected. Hosted image generation, file search, Code Interpreter, computer use and hosted MCP are unsupported. Deferred function definitions are made available eagerly; native Responses tool search is not executed.
+
+CodeBuddy always sends streaming Chat Completions upstream. It supports automatic or required tool use, but not selection of a specific named tool. Non-streaming gateway requests collect the upstream stream, with a 32 MiB aggregate limit. Client cancellation closes the upstream stream and releases its collector.
+
+Token usage is preserved. Bifrost does not estimate ChatGPT plan consumption in dollars using OpenAI API prices; an absent cost estimate does not mean the account used no quota. Neither provider supports uploads, batches, embeddings, audio generation, transcription, or standalone image generation in this integration.
+
+## Account management API
+
+The following endpoints use the ordinary provider management authentication and permissions. Account operations require a loopback client and same-origin dashboard. Development builds also accept the local Vite dashboard on port 3000.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/providers/{provider}/account` | Read connected state, opaque identity, expiry, login state and safe error text |
+| POST | `/api/providers/chatgpt/account/login` | Start OAuth; returns `session_id` and authorization `url` |
+| POST | `/api/providers/chatgpt/account/callback` | Submit `{ "session_id": "...", "url": "<complete callback URL>" }` |
+| POST | `/api/providers/{provider}/account/connect` | Connect existing local credentials |
+| POST | `/api/providers/{provider}/account/detect` | Re-read and refresh local credentials |
+| DELETE | `/api/providers/{provider}/account` | Disconnect the Bifrost account connection |
+
+Model discovery is cached per account for five minutes, with at most 4,096 entries. Connection changes invalidate the cache and refresh Bifrost's shared model catalog. Account status and login endpoints never return access tokens, refresh tokens, or ID tokens.
+
+## Validation
+
+Mock-based tests cover credential rotation, concurrent refresh, desktop-write conflicts, ID-token signature/issuer/audience/nonce checks, callbacks, quota errors, protocol conversion, tool history, images, reasoning, truncation and cancellation. UI tests mock account operations and do not authorize real accounts.
+
+The provider harness includes twelve **local account** cases: the three API formats, streaming and non-streaming, for each provider. Connect the accounts and set the collection variables `chatgptModel` and `codebuddyModel` to models available to those accounts before running the live harness. Live execution is manual.

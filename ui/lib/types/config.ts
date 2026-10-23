@@ -592,6 +592,7 @@ export interface ModelProviderConfig {
 	ignore_provider_cost?: boolean;
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
+	local_account_config?: LocalAccountConfig;
 	prompt_cache?: PromptCacheConfig;
 	injected_tools?: InjectedTool[] | null;
 	status?: "unknown" | "success" | "list_models_failed";
@@ -623,6 +624,7 @@ export interface AddProviderRequest {
 	ignore_provider_cost?: boolean;
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
+	local_account_config?: LocalAccountConfig;
 	prompt_cache?: PromptCacheConfig;
 	injected_tools?: InjectedTool[] | null;
 }
@@ -638,6 +640,7 @@ export interface UpdateProviderRequest {
 	ignore_provider_cost?: boolean;
 	custom_provider_config?: CustomProviderConfig;
 	openai_config?: OpenAIConfig;
+	local_account_config?: LocalAccountConfig;
 	prompt_cache?: PromptCacheConfig;
 	injected_tools?: InjectedTool[] | null;
 }
@@ -993,3 +996,7 @@ export interface ProviderFormData {
 
 // Status types
 export type ProviderStatus = "active" | "error" | "deleted";
+export interface LocalAccountConfig {
+	credential_file?: string;
+	prompt_compat?: boolean;
+}

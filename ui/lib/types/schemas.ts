@@ -1971,3 +1971,7 @@ export const rssFeedFormSchema = z.object({
 });
 
 export type RSSFeedFormSchema = z.infer<typeof rssFeedFormSchema>;
+export const localAccountSettingsSchema = z.object({
+	credential_file: z.string().refine((value) => !/[\r\n\0]/.test(value), "Enter a valid local file path"),
+	prompt_compat: z.boolean(),
+});

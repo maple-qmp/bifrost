@@ -182,6 +182,21 @@ const DEFAULT_MODEL_PARAMETERS: ModelDatasheetResponse = {
 
 export const providersApi = baseApi.injectEndpoints({
 	endpoints: (builder) => ({
+		getProviderAccount: builder.query<AccountStatus, string>({
+			query: (provider) => `/providers/${provider}/account`,
+		}),
+		providerAccountAction: builder.mutation<
+			AccountStatus & { session_id?: string; url?: string },
+			{ provider: string; action: "login" | "connect" | "detect" | "callback" | "disconnect"; session_id?: string; url?: string }
+		>({
+			query: ({ provider, action, ...body }) => ({
+				url: `/providers/${provider}/account${action === "disconnect" ? "" : `/${action}`}`,
+				method: action === "disconnect" ? "DELETE" : "POST",
+				body,
+			}),
+			invalidatesTags: ["Providers", "Models"],
+		}),
+
 		// Get all providers
 		getProviders: builder.query<ModelProvider[], void>({
 			query: () => "/providers",
@@ -557,3 +572,11 @@ export const {
 	useLazyGetModelDetailsQuery,
 	useUpsertModelCatalogEntriesMutation,
 } = providersApi;
+export interface AccountStatus {
+	connected: boolean;
+	identity?: string;
+	expires_at?: number;
+	login_state?: string;
+	error?: string;
+}
+export const { useGetProviderAccountQuery, useProviderAccountActionMutation } = providersApi;

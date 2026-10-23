@@ -194,6 +194,9 @@ func (s *Store) CalculateCostForUsage(usage *schemas.BifrostLLMUsage, provider s
 // output / additional split, not just the scalar total. Returns nil when there
 // is no cost to record.
 func (s *Store) CalculateCostBreakdownForUsage(usage *schemas.BifrostLLMUsage, provider schemas.ModelProvider, model string, requestType schemas.RequestType, scopes *LookupScopes) *schemas.BifrostCost {
+	if provider == schemas.ChatGPT {
+		return nil
+	}
 	if usage == nil {
 		return nil
 	}
@@ -505,6 +508,9 @@ func (s *Store) calculateBaseCost(result *schemas.BifrostResponse, scopes Lookup
 		if r := extraFields.ResolvedModelUsed; r != "" && r != extraFields.OriginalModelRequested {
 			routingInfo.ResolvedKeyAlias = &schemas.ResolvedKeyAlias{ModelID: r}
 		}
+	}
+	if routingInfo.Provider == schemas.ChatGPT {
+		return nil
 	}
 	requestType := extraFields.RequestType
 	if extraFields.PricingRequestType != "" {

@@ -799,6 +799,19 @@ paths:
     $ref: "./paths/management/providers.yaml#/providers"
   /api/providers/{provider}:
     $ref: "./paths/management/providers.yaml#/providers-by-name"
+  /api/providers/{provider}/account:
+    get:
+      $ref: "./paths/management/provideraccount.yaml#/status/get"
+    delete:
+      $ref: "./paths/management/provideraccount.yaml#/disconnect/delete"
+  /api/providers/{provider}/account/login:
+    $ref: "./paths/management/provideraccount.yaml#/login"
+  /api/providers/{provider}/account/connect:
+    $ref: "./paths/management/provideraccount.yaml#/connect"
+  /api/providers/{provider}/account/detect:
+    $ref: "./paths/management/provideraccount.yaml#/detect"
+  /api/providers/{provider}/account/callback:
+    $ref: "./paths/management/provideraccount.yaml#/callback"
   /api/providers/{provider}/keys:
     $ref: "./paths/management/providers.yaml#/provider-keys"
   /api/providers/{provider}/keys/{key_id}:
@@ -2095,6 +2108,10 @@ components:
       $ref: "./schemas/management/session.yaml#/IsAuthEnabledResponse"
 
     # Providers
+    LocalAccountConfig:
+      $ref: "./schemas/management/providers.yaml#/LocalAccountConfig"
+    LocalAccountStatus:
+      $ref: "./schemas/management/providers.yaml#/LocalAccountStatus"
     ProviderResponse:
       $ref: "./schemas/management/providers.yaml#/ProviderResponse"
     ListProvidersResponse:

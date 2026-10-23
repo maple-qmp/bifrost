@@ -651,6 +651,7 @@ type ProviderConfig struct {
 	IgnoreProviderCost      bool                  `json:"ignore_provider_cost"`       // Ignore provider-reported usage.cost and price the request from Bifrost's catalog and overrides (default: false)
 	CustomProviderConfig    *CustomProviderConfig `json:"custom_provider_config,omitempty"`
 	OpenAIConfig            *OpenAIConfig         `json:"openai_config,omitempty"`
+	LocalAccountConfig      *LocalAccountConfig   `json:"local_account_config,omitempty"`
 	PromptCache             *PromptCacheConfig    `json:"prompt_cache,omitempty"`
 	InjectedTools           []InjectedTool        `json:"injected_tools,omitempty"`
 }
@@ -945,4 +946,17 @@ type WebSocketCapableProvider interface {
 	WebSocketResponsesURL(key Key) string
 	// WebSocketHeaders returns the headers required for the upstream WebSocket connection.
 	WebSocketHeaders(key Key) map[string]string
+}
+
+// LocalAccountConfig references credentials managed locally, never embedded tokens.
+type LocalAccountConfig struct {
+	CredentialFile string `json:"credential_file,omitempty"`
+	PromptCompat   *bool  `json:"prompt_compat,omitempty"`
+	// DataDir is supplied by the host and is never exported.
+	DataDir string `json:"-"`
+}
+
+// IsLocalAccountProvider identifies providers whose credentials are managed outside the key pool.
+func IsLocalAccountProvider(provider ModelProvider) bool {
+	return provider == ChatGPT || provider == CodeBuddy
 }
