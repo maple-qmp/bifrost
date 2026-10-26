@@ -30,7 +30,7 @@ You can specify a credential file in the account panel. Bifrost refreshes expire
 
 **System prompt compatibility** defaults to enabled. It applies AI-Proxy's fingerprint, billing-header, security-term and client-brand compatibility rules only to system text in the final CodeBuddy request. User messages, assistant history and tool results remain unchanged. Disable it in the account panel when it is not needed. Upstream error `11128` is classified as `upstream_rejected_11128`; Bifrost does not guarantee that compatibility changes prevent upstream rejection.
 
-If the first system text line declares an agent powered by **DeepSeek Harness**, Bifrost replaces that identity line with `You are an interactive software engineering assistant operating in a command-line environment.` It preserves subsequent lines and does not insert a new identity line. This rule applies to any model reached through CodeBuddy while `prompt_compat` is enabled; later mentions of DeepSeek Harness remain unchanged. Native DeepSeek provider requests do not use this rule.
+Bifrost removes the exact opening line `You are an AI agent powered by DeepSeek Harness.` when more system text follows it, including one separating blank line. It preserves the remaining instructions. It also inserts a zero-width character after the first letter of `DeepSeek` elsewhere in CodeBuddy system text. If a system text line starts with `You are interacting with the user through the DeepSeek Harness Web GUI whose URL the runtime context names.`, the quoted phrase `"this page", "this GUI", or "this app"` is changed to `'this page', 'this GUI', or 'this app'` in that system text. These rules use `prompt_compat` and do not change other roles.
 </Tab>
 </Tabs>
 

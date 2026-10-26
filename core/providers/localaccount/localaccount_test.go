@@ -486,6 +486,106 @@ func TestLocalAccountCompatibility(t *testing.T) {
 	require.Equal(t, s, *p.chatRequest(r).Messages[0].Content.ContentStr)
 }
 
+func TestLocalAccountDeepSeekTerm(t *testing.T) {
+	input := "DeepSeek deepseek DeepSeeker"
+	want := "D\u200beepSeek d\u200beepseek DeepSeeker"
+	require.Equal(t, want, rewriteSystem(input))
+	require.Equal(t, want, rewriteSystem(want))
+}
+
+func TestLocalAccountDeepSeekHarnessGUIQuotes(t *testing.T) {
+	const opening = "You are interacting with the user through the DeepSeek Harness Web GUI whose URL the runtime context names."
+	const original = `"this page", "this GUI", or "this app"`
+	const rewritten = `'this page', 'this GUI', or 'this app'`
+	const maskedOpening = "You are interacting with the user through the D\u200beepSeek Harness Web GUI whose URL the runtime context names."
+	for _, tc := range []struct {
+		name, system, want string
+		enabled, blocks    bool
+	}{
+		{"matching line", opening + "\n" + original, maskedOpening + "\n" + rewritten, true, false},
+		{"content block", opening + "\n" + original, maskedOpening + "\n" + rewritten, true, true},
+		{"line after preamble", "Preamble\n" + opening + "\n" + original, "Preamble\n" + maskedOpening + "\n" + rewritten, true, false},
+		{"same-line continuation", opening + " When the user refers to " + original + ", they mean this GUI.", maskedOpening + " When the user refers to " + rewritten + ", they mean this GUI.", true, false},
+		{"line with CRLF", opening + "\r\n" + original, maskedOpening + "\r\n" + rewritten, true, false},
+		{"no opening line", original, original, true, false},
+		{"partial opening line", "Prefix " + opening + "\n" + original, "Prefix " + maskedOpening + "\n" + original, true, false},
+		{"compatibility disabled", opening + "\n" + original, opening + "\n" + original, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			content := &schemas.ChatMessageContent{ContentStr: schemas.Ptr(tc.system)}
+			if tc.blocks {
+				content = &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr(tc.system)}}}
+			}
+			r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{
+				{Role: schemas.ChatMessageRoleSystem, Content: content},
+				{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(tc.system)}},
+			}}
+			copy := *r
+			out := (&Provider{compat: tc.enabled}).chatRequest(&copy)
+			got := out.Messages[0].Content.ContentStr
+			if tc.blocks {
+				got = out.Messages[0].Content.ContentBlocks[0].Text
+			}
+			require.Equal(t, tc.want, *got)
+			require.Equal(t, tc.system, *out.Messages[1].Content.ContentStr)
+			if tc.blocks {
+				require.Equal(t, tc.system, *r.Messages[0].Content.ContentBlocks[0].Text, "caller-owned request changed")
+			} else {
+				require.Equal(t, tc.system, *r.Messages[0].Content.ContentStr, "caller-owned request changed")
+			}
+			if tc.enabled {
+				require.Equal(t, tc.want, rewriteSystem(tc.want), "rewrite is not idempotent")
+			}
+		})
+	}
+}
+
+func TestLocalAccountDeepSeekHarnessGUIQuotesWire(t *testing.T) {
+	system := deepSeekHarnessGUIOpening + "\n" + guiDoubleQuotedTerms
+	var captured string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body openai.OpenAIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		captured = *body.Messages[0].Content.ContentStr
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, chatSSE)
+	}))
+	defer server.Close()
+	p := testProvider(t, schemas.CodeBuddy, server.URL)
+	r := &schemas.BifrostChatRequest{Provider: schemas.CodeBuddy, Model: "any-model", Input: []schemas.ChatMessage{
+		{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &system}},
+		{Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("hi")}},
+	}}
+	_, e := p.ChatCompletion(testContext(t), schemas.Key{}, r)
+	require.Nil(t, e)
+	require.Equal(t, "You are interacting with the user through the D\u200beepSeek Harness Web GUI whose URL the runtime context names.\n"+guiSingleQuotedTerms, captured)
+	require.Equal(t, system, *r.Input[0].Content.ContentStr, "caller-owned request changed")
+}
+
+func BenchmarkLocalAccountDeepSeekHarnessGUIQuotes(b *testing.B) {
+	r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(deepSeekHarnessGUIOpening + "\n" + guiDoubleQuotedTerms)}}}}
+	p := &Provider{compat: true}
+	b.ReportAllocs()
+	for b.Loop() {
+		copy := *r
+		p.chatRequest(&copy)
+	}
+}
+
+func BenchmarkLocalAccountDeepSeekHarnessOpening(b *testing.B) {
+	r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(deepSeekHarnessOpening + "\n\nYou are a coding agent.")}}}}
+	p := &Provider{compat: true}
+	b.ReportAllocs()
+	for b.Loop() {
+		copy := *r
+		p.chatRequest(&copy)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -815,74 +915,49 @@ func TestLocalAccountDesktopRefreshPreservesFields(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 }
 
-func TestLocalAccountDeepSeekHarnessCompatibility(t *testing.T) {
-	const generic = "You are an interactive software engineering assistant operating in a command-line environment."
+func TestLocalAccountDeepSeekHarnessOpeningRemoved(t *testing.T) {
 	const identity = "You are an AI agent powered by DeepSeek Harness."
-	for _, tc := range []struct {
-		name, system, want string
-		enabled, blocks    bool
-	}{
-		{"identity", identity, generic, true, false},
-		{"multiline", identity + "\nKeep these instructions.", generic + "\nKeep these instructions.", true, false},
-		{"blocks", identity + "\nKeep these instructions.", generic + "\nKeep these instructions.", true, true},
-		{"variant", "You are a coding agent powered by DeepSeek Harness (CLI).", generic, true, false},
-		{"case insensitive", "You are an AI agent powered by deepseek harness.", generic, true, false},
-		{"billing header", "x-anthropic-billing-header: test\n" + identity + "\nKeep these instructions.", generic + "\nKeep these instructions.", true, false},
-		{"not first line", "Keep these instructions.\n" + identity, "Keep these instructions.\n" + identity, true, false},
-		{"mention only", "Documentation mentions DeepSeek Harness.", "Documentation mentions DeepSeek Harness.", true, false},
-		{"disabled", identity, identity, false, false},
-		{"ordinary", "Original system", "Original system", true, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p := &Provider{compat: tc.enabled}
-			content := &schemas.ChatMessageContent{ContentStr: schemas.Ptr(tc.system)}
-			if tc.blocks {
-				content = &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr(tc.system)}}}
+	for _, blocks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("blocks=%v", blocks), func(t *testing.T) {
+			original := identity + "\n\nKeep these instructions."
+			content := &schemas.ChatMessageContent{ContentStr: schemas.Ptr(original)}
+			if blocks {
+				content = &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr(original)}}}
 			}
-			r := &openai.OpenAIChatRequest{Model: "any-codebuddy-model", Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: content}, {Role: schemas.ChatMessageRoleUser, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(identity)}}, {Role: schemas.ChatMessageRoleAssistant, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(identity)}}, {Role: schemas.ChatMessageRoleTool, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr(identity)}}}}
+			r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: content}}}
 			before, err := json.Marshal(r)
 			require.NoError(t, err)
 			copy := *r
-			out := p.chatRequest(&copy)
-			text := out.Messages[0].Content.ContentStr
-			if tc.blocks {
-				text = out.Messages[0].Content.ContentBlocks[0].Text
+			out := (&Provider{compat: true}).chatRequest(&copy)
+			got := out.Messages[0].Content.ContentStr
+			if blocks {
+				got = out.Messages[0].Content.ContentBlocks[0].Text
 			}
-			require.Equal(t, tc.want, *text)
-			for _, m := range out.Messages[1:] {
-				require.Equal(t, identity, *m.Content.ContentStr)
-			}
-			after, err := json.Marshal(r)
+			require.Equal(t, "Keep these instructions.", *got)
+			unchanged, err := json.Marshal(r)
 			require.NoError(t, err)
-			require.JSONEq(t, string(before), string(after), "caller-owned history changed")
+			require.JSONEq(t, string(before), string(unchanged), "caller-owned history changed")
 		})
 	}
 }
 
-func BenchmarkLocalAccountDeepSeekHarnessCompatibility(b *testing.B) {
-	p := &Provider{compat: true}
-	r := &openai.OpenAIChatRequest{Model: "any-codebuddy-model", Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: schemas.Ptr("You are an AI agent powered by DeepSeek Harness.\nKeep these instructions.")}}}}
-	b.ReportAllocs()
-	for b.Loop() {
-		copy := *r
-		p.chatRequest(&copy)
-	}
+func TestLocalAccountDeepSeekHarnessPromptExcerpt(t *testing.T) {
+	input := deepSeekHarnessOpening + "\n\n" +
+		"You are a coding agent powered by the deepseek-v4.1-flash model.\n\n" +
+		deepSeekHarnessGUIOpening + ` When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI.`
+	want := "You are a coding agent powered by the d\u200beepseek-v4.1-flash model.\n\n" +
+		"You are interacting with the user through the D\u200beepSeek Harness Web GUI whose URL the runtime context names." +
+		` When the user refers to 'this page', 'this GUI', or 'this app' without naming another target, they mean this GUI.`
+	require.Equal(t, want, rewriteSystem(input))
+	require.Equal(t, want, rewriteSystem(want))
+	require.Equal(t, "D\u200beepSeek Harness appears after an unrelated opening.", rewriteSystem("DeepSeek Harness appears after an unrelated opening."))
+	require.Equal(t, "Preamble\nYou are an AI agent powered by D\u200beepSeek Harness.\nKeep this line.", rewriteSystem("Preamble\n"+deepSeekHarnessOpening+"\nKeep this line."))
+	require.Equal(t, "Keep this line.", rewriteSystem(deepSeekHarnessOpening+"\r\n\r\nKeep this line."))
+	r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &input}}}}
+	require.Equal(t, input, *(&Provider{compat: false}).chatRequest(r).Messages[0].Content.ContentStr)
 }
 
-func TestLocalAccountDeepSeekHarnessOnlyFirstSystemLine(t *testing.T) {
-	identity := "You are an AI agent powered by DeepSeek Harness."
-	r := &openai.OpenAIChatRequest{Messages: []openai.OpenAIMessage{
-		{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("Original first line")}, {Type: schemas.ChatContentBlockTypeText, Text: &identity}}}},
-		{Role: schemas.ChatMessageRoleSystem, Content: &schemas.ChatMessageContent{ContentStr: &identity}},
-	}}
-	before, err := json.Marshal(r)
-	require.NoError(t, err)
-	out, err := json.Marshal((&Provider{compat: true}).chatRequest(r))
-	require.NoError(t, err)
-	require.JSONEq(t, string(before), string(out))
-}
-
-func TestLocalAccountDeepSeekHarnessWire(t *testing.T) {
+func TestLocalAccountDeepSeekHarnessOpeningWireRemoved(t *testing.T) {
 	for _, protocol := range []string{"chat", "responses", "messages"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", protocol, stream), func(t *testing.T) {
@@ -927,7 +1002,7 @@ func TestLocalAccountDeepSeekHarnessWire(t *testing.T) {
 						require.Nil(t, chunk.BifrostError)
 					}
 				}
-				require.Equal(t, "You are an interactive software engineering assistant operating in a command-line environment.\nOriginal instructions.", captured)
+				require.Equal(t, "Original instructions.", captured)
 			})
 		}
 	}

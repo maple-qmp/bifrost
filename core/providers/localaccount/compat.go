@@ -9,7 +9,7 @@ import (
 	"github.com/maximhq/bifrost/core/schemas"
 )
 
-var compatibilityTerms = []string{"supply chain compromise", "supply-chain compromise", "remote code execution", "noreply@anthropic.com", "privilege escalation", "credential stuffing", "command and control", "credential testing", "malicious purposes", "detection evasion", "malicious intent", "mass targeting", "Co-Authored-By", "agent-identity", "C2 frameworks", "reverse shell", "SQL injection", "Claude Sonnet", "C2 framework", "Claude Haiku", "Claude Fable", "OhMyOpenCode", "brute force", "brute-force", "Claude Code", "Claude Opus", "ransomware", "keylogger", "Anthropic", "phishing", "backdoor", "zero-day", "OpenCode", "exploit", "malware", "rootkit", "botnet", "Claude", "OpenAI", "Gemini", "Cursor", "DDoS", "CSRF", "0day", "Kimi", "Qwen", "DoS", "XSS"}
+var compatibilityTerms = []string{"supply chain compromise", "supply-chain compromise", "remote code execution", "noreply@anthropic.com", "privilege escalation", "credential stuffing", "command and control", "credential testing", "malicious purposes", "detection evasion", "malicious intent", "mass targeting", "Co-Authored-By", "agent-identity", "C2 frameworks", "reverse shell", "SQL injection", "Claude Sonnet", "C2 framework", "Claude Haiku", "Claude Fable", "OhMyOpenCode", "brute force", "brute-force", "Claude Code", "Claude Opus", "ransomware", "keylogger", "Anthropic", "DeepSeek", "phishing", "backdoor", "zero-day", "OpenCode", "exploit", "malware", "rootkit", "botnet", "Claude", "OpenAI", "Gemini", "Cursor", "DDoS", "CSRF", "0day", "Kimi", "Qwen", "DoS", "XSS"}
 var fingerprints = [][2]string{{"You are Claude Code, Anthropic's official CLI for Claude.", "You are an interactive software engineering assistant operating in a command-line environment."}, {"You are Claude Code, Anthropic's official CLI", "You are an interactive software engineering assistant operating in a command-line environment"}, {"Main branch (you will usually use this for PRs)", "Main branch"}}
 var compatibilityPattern = func() *regexp.Regexp {
 	parts := make([]string, len(compatibilityTerms))
@@ -19,21 +19,37 @@ var compatibilityPattern = func() *regexp.Regexp {
 	return regexp.MustCompile(`(?i)\b(?:` + strings.Join(parts, "|") + `)\b`)
 }()
 
-var deepSeekHarnessIdentity = regexp.MustCompile(`(?i)^[ \t]*you are\b[^\r\n]*\bdeepseek harness\b[^\r\n]*\r?$`)
+const deepSeekHarnessGUIOpening = "You are interacting with the user through the DeepSeek Harness Web GUI whose URL the runtime context names."
+const deepSeekHarnessOpening = "You are an AI agent powered by DeepSeek Harness."
+const guiDoubleQuotedTerms = `"this page", "this GUI", or "this app"`
+const guiSingleQuotedTerms = `'this page', 'this GUI', or 'this app'`
 
-func rewriteDeepSeekHarnessIdentity(s string) string {
-	first, rest, multiline := strings.Cut(s, "\n")
-	if !deepSeekHarnessIdentity.MatchString(first) {
+func removeDeepSeekHarnessOpening(s string) string {
+	if rest, ok := strings.CutPrefix(s, deepSeekHarnessOpening+"\r\n"); ok && rest != "" {
+		return strings.TrimPrefix(rest, "\r\n")
+	}
+	if rest, ok := strings.CutPrefix(s, deepSeekHarnessOpening+"\n"); ok && rest != "" {
+		return strings.TrimPrefix(rest, "\n")
+	}
+	return s
+}
+
+func rewriteDeepSeekHarnessGUIQuotes(s string) string {
+	if !strings.Contains(s, guiDoubleQuotedTerms) {
 		return s
 	}
-	text := "You are an interactive software engineering assistant operating in a command-line environment."
-	if strings.HasSuffix(first, "\r") {
-		text += "\r"
+	for start := 0; start < len(s); {
+		index := strings.Index(s[start:], deepSeekHarnessGUIOpening)
+		if index < 0 {
+			return s
+		}
+		index += start
+		if index == 0 || s[index-1] == '\n' {
+			return strings.ReplaceAll(s, guiDoubleQuotedTerms, guiSingleQuotedTerms)
+		}
+		start = index + len(deepSeekHarnessGUIOpening)
 	}
-	if multiline {
-		text += "\n" + rest
-	}
-	return text
+	return s
 }
 
 func rewriteSystem(s string) string {
@@ -43,6 +59,8 @@ func rewriteSystem(s string) string {
 	if strings.HasPrefix(s, "x-anthropic-billing-header:") {
 		_, s, _ = strings.Cut(s, "\n")
 	}
+	s = removeDeepSeekHarnessOpening(s)
+	s = rewriteDeepSeekHarnessGUIQuotes(s)
 	indexes := compatibilityPattern.FindAllStringIndex(s, -1)
 	if len(indexes) == 0 {
 		return s
@@ -71,7 +89,6 @@ func (p *Provider) chatRequest(r *openai.OpenAIChatRequest) *openai.OpenAIChatRe
 	// Converters own their output; cloning content here also protects caller-owned history.
 	if p.compat {
 		copied := false
-		firstSystemText := true
 		for i, m := range r.Messages {
 			if m.Role != schemas.ChatMessageRoleSystem || m.Content == nil {
 				continue
@@ -80,10 +97,6 @@ func (p *Provider) chatRequest(r *openai.OpenAIChatRequest) *openai.OpenAIChatRe
 			changed := false
 			if content.ContentStr != nil {
 				text := rewriteSystem(*content.ContentStr)
-				if firstSystemText {
-					text = rewriteDeepSeekHarnessIdentity(text)
-					firstSystemText = false
-				}
 				if text != *content.ContentStr {
 					content.ContentStr = schemas.Ptr(text)
 					changed = true
@@ -94,10 +107,6 @@ func (p *Provider) chatRequest(r *openai.OpenAIChatRequest) *openai.OpenAIChatRe
 						continue
 					}
 					text := rewriteSystem(*block.Text)
-					if firstSystemText {
-						text = rewriteDeepSeekHarnessIdentity(text)
-						firstSystemText = false
-					}
 					if text == *block.Text {
 						continue
 					}
