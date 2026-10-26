@@ -183,6 +183,16 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 			openaiReq.MaxCompletionTokens = nil
 		}
 		return openaiReq
+	case schemas.Databricks:
+		openaiReq.filterOpenAISpecificParameters(caps)
+		// Llama, gpt-oss and Qwen endpoints reject max_completion_tokens with a 400
+		// ("unknown field"). Every chat endpoint checked on a live workspace accepts
+		// max_tokens, on both Model Serving and the Unity AI Gateway.
+		if openaiReq.MaxCompletionTokens != nil {
+			openaiReq.MaxTokens = openaiReq.MaxCompletionTokens
+			openaiReq.MaxCompletionTokens = nil
+		}
+		return openaiReq
 	case schemas.Ollama:
 		openaiReq.filterOpenAISpecificParameters(caps)
 		// Ollama's chat-completions endpoints still use the legacy max_tokens
@@ -194,6 +204,11 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 		return openaiReq
 	case schemas.Vertex:
 		openaiReq.filterOpenAISpecificParameters(caps)
+		// A custom container's OpenAI contract is independent of the model name.
+		// Publisher-specific Mistral/MaaS rewrites do not apply to these endpoints.
+		if schemas.GetVertexEndpoint(ctx) != nil {
+			return openaiReq
+		}
 
 		// Apply Mistral-specific transformations for Vertex Mistral models
 		if schemas.IsMistralModel(bifrostReq.Model) {

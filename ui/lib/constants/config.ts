@@ -113,7 +113,7 @@ export const isKeyRequiredByProvider: Record<ProviderName, boolean> = {
 	cloudflare: true,
 	chatgpt: false,
 	codebuddy: false,
-	"github-copilot": false,
+	"github-copilot": true,
 	typesafe: true,
 };
 
@@ -217,6 +217,8 @@ export const PROVIDER_SUPPORTED_REQUESTS: Record<BaseProvider, string[]> = {
 		"video_list",
 		"video_remix",
 		"live",
+		"passthrough",
+		"passthrough_stream",
 	],
 	anthropic: [
 		"list_models",
@@ -226,6 +228,8 @@ export const PROVIDER_SUPPORTED_REQUESTS: Record<BaseProvider, string[]> = {
 		"responses",
 		"responses_stream",
 		"count_tokens",
+		"passthrough",
+		"passthrough_stream",
 	],
 	gemini: [
 		"list_models",
@@ -248,6 +252,8 @@ export const PROVIDER_SUPPORTED_REQUESTS: Record<BaseProvider, string[]> = {
 		"video_delete",
 		"video_list",
 		"video_remix",
+		"passthrough",
+		"passthrough_stream",
 	],
 	cohere: [
 		"list_models",
