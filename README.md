@@ -1,286 +1,103 @@
-# Bifrost AI Gateway
+# Bifrost AI Gateway · maple-qmp fork
 
-<a href="https://trendshift.io/repositories/14529?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-14529" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/14529" alt="maximhq%2Fbifrost | Trendshift" width="250" height="55"/></a>
+这是基于 [maximhq/bifrost](https://github.com/maximhq/bifrost) 维护的独立 fork。Bifrost 提供统一的 AI Gateway、OpenAI 兼容接口、MCP 工具调用、Provider 管理和 Web 控制台；本仓库在此基础上加入本地账号 Provider 与本地安装方式。
 
-[![Discord badge](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/exN5KAydbU)
-[![codecov](https://codecov.io/gh/maximhq/bifrost/branch/main/graph/badge.svg)](https://codecov.io/gh/maximhq/bifrost)
-![Docker Pulls](https://img.shields.io/docker/pulls/maximhq/bifrost)
-[<img src="https://run.pstmn.io/button.svg" alt="Run In Postman" style="width: 95px; height: 21px;">](https://app.getpostman.com/run-collection/31642484-2ba0e658-4dcd-49f4-845a-0c7ed745b916?action=collection%2Ffork&source=rip_markdown&collection-url=entityId%3D31642484-2ba0e658-4dcd-49f4-845a-0c7ed745b916%26entityType%3Dcollection%26workspaceId%3D63e853c8-9aec-477f-909c-7f02f543150e)
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/bifrost)](https://artifacthub.io/packages/search?repo=bifrost)
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/maximhq/bifrost?utm_source=badge)
-[![License](https://img.shields.io/github/license/maximhq/bifrost)](LICENSE)
+> **获取本 fork 的版本：**从本仓库的 `dev` 分支拉取源码并在本地构建。目前没有发布此 fork 的 npm 包、Docker Hub 镜像或预编译二进制文件。`npx -y @maximhq/bifrost`、`docker run maximhq/bifrost` 和 `go get github.com/maximhq/bifrost/...` 获取的是上游版本，**不包含本仓库的改动**。
 
-## The fastest way to build AI applications that never go down
+## 本 fork 的改动
 
-Bifrost is a high-performance AI gateway that unifies access to 23+ providers (OpenAI, Anthropic, AWS Bedrock, Google Vertex, and more) through a single OpenAI-compatible API. Deploy in seconds with zero configuration and get automatic failover, load balancing, semantic caching, and enterprise-grade features.
+- **ChatGPT Plan 与 CodeBuddy 本地账号 Provider：**直接在 Bifrost 中连接本机账号，不需要单独运行 AI-Proxy、Python 或 LiteLLM 服务。支持 Chat Completions、Responses 和 Anthropic 兼容消息接口；可用模型和能力取决于实际账号。
+- **账号请求转换与工具调用修复：**保留本地账号请求在不同 API 格式之间转换时的工具调用与结果历史。
+- **macOS 本地 Homebrew 安装：**从当前检出的源码构建网关和管理界面，生成只保存在本机的 formula，并可作为 `brew services` 服务运行。它不会发布到远程 tap。
 
-## Quick Start
+账号连接、支持范围及限制请看 [本地账号使用文档](docs/providers/supported-providers/local-accounts.mdx)。底层实现与验证说明见 [localaccount README](core/providers/localaccount/README.md)。
 
-![Get started](./docs/media/getting-started.png)
+## 快速开始：macOS 本地服务
 
-**Go from zero to production-ready AI gateway in under a minute.**
+需要 Homebrew、Go 1.27.3、Node.js（仓库 `.nvmrc` 指定 22.12.0）、Python 3，以及 Xcode Command Line Tools。安装脚本会从**本仓库源码**构建二进制和 Web UI，然后安装到本机的 `maple/bifrost-local` tap。
 
-**Step 1:** Start Bifrost Gateway
+~~~bash
+git clone -b dev https://github.com/maple-qmp/bifrost.git
+cd bifrost
+scripts/homebrew/install-local.sh
+brew test bifrost-local
+brew services start bifrost-local
+~~~
 
-```bash
-# Install and run locally
-npx -y @maximhq/bifrost
+打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)。首次创建管理员时，在终端读取并输入初始化令牌：
 
-# Or use Docker
-docker run -p 8080:8080 maximhq/bifrost
-```
+~~~bash
+bifrost-local setup-token
+~~~
 
-**Step 2:** Configure via Web UI
+服务只监听本机回环地址。账号连接需要在运行 Bifrost 的同一台电脑上操作：在 **Model Providers** 中添加 **ChatGPT Plan** 并完成浏览器登录，或先登录 CodeBuddy 桌面应用再选择 **CodeBuddy → Detect account**。ChatGPT 登录回调使用本机 1455 端口。
 
-```bash
-# Open the built-in web interface
-open http://localhost:8080
-```
+安装后的数据保存在 `~/Library/Application Support/BifrostLocal`。更新源码后重新运行 `scripts/homebrew/install-local.sh`，再执行 `brew services restart bifrost-local`；仅运行 `brew upgrade` 不会获取新的仓库代码。服务控制、日志位置和卸载方法见 [Homebrew 安装说明](scripts/homebrew/README.md)。
 
-**Step 3:** Make your first API call
+## 从源码构建和运行
 
-```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
+适用于不使用上述 Homebrew 服务的开发环境。准备 Go 1.27.3、Node.js 22.12.0、npm、make 和可用于 CGO/SQLite 的 C 编译工具。请在**仓库根目录**运行，并传入 `LOCAL=1`，让多模块构建使用当前 `go.work` 中的本地源码。
+
+~~~bash
+git clone -b dev https://github.com/maple-qmp/bifrost.git
+cd bifrost
+make build LOCAL=1
+~~~
+
+构建会生成包含管理界面的 `tmp/bifrost-http`。以下示例使用独立的本地数据目录，仅监听回环地址，并在首次创建管理员前设置初始化令牌：
+
+~~~bash
+mkdir -p tmp/local-data
+export BIFROST_SETUP_TOKEN="$(openssl rand -hex 32)"
+printf 'Setup token: %s\n' "$BIFROST_SETUP_TOKEN"
+./tmp/bifrost-http -host 127.0.0.1 -port 8080 -app-dir ./tmp/local-data
+~~~
+
+然后打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)，创建管理员并配置 Provider。服务健康检查可用 `curl http://127.0.0.1:8080/health`。若开启推理接口鉴权，请先在控制台创建凭据或虚拟 Key，再让客户端调用 API。
+
+如果需要容器，可使用 `make docker-image LOCAL=1` **从本仓库源码构建本地镜像**；这与拉取上游的 `maximhq/bifrost` 镜像不同。CodeBuddy 桌面凭据发现和 ChatGPT 本机回调依赖宿主机环境，使用容器时需自行处理这些访问路径；本地账号场景建议优先使用本机运行方式。
+
+## 使用本地账号
+
+在控制台连接账号后，从 **Available models** 选择该账号实际可用的模型。请求使用显式 Provider 前缀，例如 `chatgpt/<model>` 或 `codebuddy/<model>`。模型名称不是固定清单，能否调用仍受账号权限和额度限制。
+
+~~~bash
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <your-virtual-key>' \
   -d '{
-    "model": "openai/gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Hello, Bifrost!"}]
+    "model": "chatgpt/<model>",
+    "messages": [{"role": "user", "content": "Hello"}]
   }'
-```
+~~~
 
-**That's it!** Your AI gateway is running with a web interface for visual configuration, real-time monitoring, and analytics.
+当推理接口未启用鉴权时，可以省略 `Authorization` 请求头。账号 Provider 不接受常规 API Key；连接与凭据管理都在本机完成。ChatGPT 计划额度不是 OpenAI API 计费额度，CodeBuddy 的可用能力也以桌面账号和上游响应为准。详细限制与配置示例见[本地账号使用文档](docs/providers/supported-providers/local-accounts.mdx)。
 
-**Complete Setup Guides:**
+## 开发与维护
 
-- [Gateway Setup](https://docs.getbifrost.ai/quickstart/gateway/setting-up) - HTTP API deployment
-- [Go SDK Setup](https://docs.getbifrost.ai/quickstart/go-sdk/setting-up) - Direct integration
+~~~bash
+make dev                               # UI 与 API 热重载
+make build LOCAL=1                     # 用当前源码构建网关
+go test ./core/providers/localaccount  # 本地账号 Provider 单元测试
+make test-mcp                          # 基于 mock 的 MCP/Agent 测试
+~~~
 
----
+`make test-core` 的其他 Provider 测试可能调用真实服务并需要相应凭据。需要同步原项目更新时，将原项目作为 `upstream` 远端，只把更新合入**本 fork**：
 
-## Enterprise Deployments
+~~~bash
+git remote add upstream https://github.com/maximhq/bifrost.git  # 首次配置
+git fetch upstream
+git switch dev
+git merge upstream/dev
+~~~
 
-Bifrost supports enterprise-grade, private deployments for teams running production AI systems at scale.
-In addition to private networking, custom security controls, and governance, enterprise deployments unlock advanced capabilities including adaptive load balancing, clustering, guardrails, MCP gateway, and other features designed for enterprise-grade scale and reliability.
+解决冲突并验证后，向自己的 `origin/dev` 推送。本仓库不会通过上游 npm 包、上游 Docker 镜像或上游 Go 模块分发本 fork 的功能。
 
-<img src=".github/assets/features.png" alt="Book a Demo" width="100%" style="margin-top:5px;"/>
+## 文档与来源
 
+- [本地账号使用文档](docs/providers/supported-providers/local-accounts.mdx)
+- [macOS Homebrew 本地安装说明](scripts/homebrew/README.md)
+- [上游 Bifrost 文档](https://docs.getbifrost.ai/)：适合了解通用网关功能；其中的上游安装命令不适用于获取本 fork 的改动
+- [上游项目](https://github.com/maximhq/bifrost)
 
-<div align="center" style="display: flex; flex-direction: column;">
-  <a href="https://calendly.com/maximai/bifrost-demo">
-    <img src=".github/assets/book-demo-button.png" alt="Book a Demo" width="170" style="margin-top:5px;"/>
-  </a>
-  <div>
-  <a href="https://www.getmaxim.ai/bifrost/enterprise" target="_blank" rel="noopener noreferrer">Explore enterprise capabilities</a>
-  </div>
-</div>
-
----
-
-## Key Features
-
-### Core Infrastructure
-
-- **[Unified Interface](https://docs.getbifrost.ai/providers/supported-providers/overview)** - Single OpenAI-compatible API for all providers
-- **[Multi-Provider Support](https://docs.getbifrost.ai/quickstart/gateway/provider-configuration)** - OpenAI, Anthropic, AWS Bedrock, Google Vertex, Azure, Cerebras, Cohere, Mistral, Ollama, Groq, and more
-- **[Automatic Fallbacks](https://docs.getbifrost.ai/features/retries-and-fallbacks)** - Seamless failover between providers and models with zero downtime
-- **[Load Balancing](https://docs.getbifrost.ai/features/retries-and-fallbacks)** - Intelligent request distribution across multiple API keys and providers
-
-### Advanced Features
-
-- **[Model Context Protocol (MCP)](https://docs.getbifrost.ai/mcp/overview)** - Enable AI models to use external tools (filesystem, web search, databases)
-- **[Semantic Caching](https://docs.getbifrost.ai/features/semantic-caching)** - Intelligent response caching based on semantic similarity to reduce costs and latency
-- **[Multimodal Support](https://docs.getbifrost.ai/quickstart/gateway/streaming)** - Support for text, images, audio, and streaming, all behind a common interface.
-- **[Custom Plugins](https://docs.getbifrost.ai/enterprise/custom-plugins)** - Extensible middleware architecture for analytics, monitoring, and custom logic
-- **[Governance](https://docs.getbifrost.ai/features/governance/virtual-keys)** - Usage tracking, rate limiting, and fine-grained access control
-
-### Enterprise & Security
-
-- **[Budget Management](https://docs.getbifrost.ai/features/governance/budget-and-limits)** - Hierarchical cost control with virtual keys, teams, and customer budgets
-- **[User Provisioning (OIDC)](https://docs.getbifrost.ai/enterprise/user-provisioning)** - OAuth 2.0 / OIDC login with background directory sync for teams, roles, and business units
-- **[Observability](https://docs.getbifrost.ai/features/observability/default)** - Native Prometheus metrics, distributed tracing, and comprehensive logging
-- **[Secrets Management](https://docs.getbifrost.ai/deployment-guides/config-json#environment-variable-references)** - Secure API key management with environment variables and deployment secrets
-
-### Developer Experience
-
-- **[Zero-Config Startup](https://docs.getbifrost.ai/quickstart/gateway/setting-up)** - Start immediately with dynamic provider configuration
-- **[Drop-in Replacement](https://docs.getbifrost.ai/features/drop-in-replacement)** - Replace OpenAI/Anthropic/GenAI APIs with one line of code
-- **[SDK Integrations](https://docs.getbifrost.ai/integrations/what-is-an-integration)** - Native support for popular AI SDKs with zero code changes
-- **[Configuration Flexibility](https://docs.getbifrost.ai/quickstart/gateway/provider-configuration)** - Web UI, API-driven, or file-based configuration options
-
----
-
-## Repository Structure
-
-Bifrost uses a modular architecture for maximum flexibility:
-
-```text
-bifrost/
-├── npx/                 # NPX script for easy installation
-├── core/                # Core functionality and shared components
-│   ├── providers/       # Provider-specific implementations (OpenAI, Anthropic, etc.)
-│   ├── schemas/         # Interfaces and structs used throughout Bifrost
-│   └── bifrost.go       # Main Bifrost implementation
-├── framework/           # Framework components for data persistence
-│   ├── configstore/     # Configuration storage backends
-│   ├── logstore/        # Request logging storage backends
-│   └── vectorstore/     # Vector storages
-├── transports/          # HTTP gateway and other interface layers
-│   └── bifrost-http/    # HTTP transport implementation
-├── ui/                  # Web interface for HTTP gateway
-├── plugins/             # Extensible plugin system
-│   ├── governance/      # Budget management and access control
-│   ├── jsonparser/      # JSON parsing and manipulation utilities
-│   ├── logging/         # Request logging and analytics
-│   ├── maxim/           # Maxim's observability integration
-│   ├── mocker/          # Mock responses for testing and development
-│   ├── semanticcache/   # Intelligent response caching
-│   └── telemetry/       # Monitoring and observability
-├── docs/                # Documentation and guides
-└── tests/               # Comprehensive test suites
-```
-
----
-
-## Getting Started Options
-
-Choose the deployment method that fits your needs:
-
-### 1. Gateway (HTTP API)
-
-**Best for:** Language-agnostic integration, microservices, and production deployments
-
-```bash
-# NPX - Get started in 30 seconds
-npx -y @maximhq/bifrost
-
-# Docker - Production ready
-docker run -p 8080:8080 -v $(pwd)/data:/app/data maximhq/bifrost
-```
-
-**Features:** Web UI, real-time monitoring, multi-provider management, zero-config startup
-
-**Learn More:** [Gateway Setup Guide](https://docs.getbifrost.ai/quickstart/gateway/setting-up)
-
-### 2. Go SDK
-
-**Best for:** Direct Go integration with maximum performance and control
-
-```bash
-go get github.com/maximhq/bifrost/core
-```
-
-**Features:** Native Go APIs, embedded deployment, custom middleware integration
-
-**Learn More:** [Go SDK Guide](https://docs.getbifrost.ai/quickstart/go-sdk/setting-up)
-
-### 3. Drop-in Replacement
-
-**Best for:** Migrating existing applications with zero code changes
-
-```diff
-# OpenAI SDK
-- base_url = "https://api.openai.com"
-+ base_url = "http://localhost:8080/openai"
-
-# Anthropic SDK
-- base_url = "https://api.anthropic.com"
-+ base_url = "http://localhost:8080/anthropic"
-
-# Google GenAI SDK
-- api_endpoint = "https://generativelanguage.googleapis.com"
-+ api_endpoint = "http://localhost:8080/genai"
-```
-
-**Learn More:** [Integration Guides](https://docs.getbifrost.ai/integrations/what-is-an-integration)
-
----
-
-## Performance
-
-Bifrost adds virtually zero overhead to your AI requests. In sustained 5,000 RPS benchmarks, the gateway added only **11 µs** of overhead per request.
-
-| Metric | t3.medium | t3.xlarge | Improvement |
-|--------|-----------|-----------|-------------|
-| Added latency (Bifrost overhead) | 59 µs | **11 µs** | **-81%** |
-| Success rate @ 5k RPS | 100% | 100% | No failed requests |
-| Avg. queue wait time | 47 µs | **1.67 µs** | **-96%** |
-| Avg. request latency (incl. provider) | 2.12 s | **1.61 s** | **-24%** |
-
-**Key Performance Highlights:**
-
-- **Perfect Success Rate** - 100% request success rate even at 5k RPS
-- **Minimal Overhead** - Less than 15 µs additional latency per request
-- **Efficient Queuing** - Sub-microsecond average wait times
-- **Fast Key Selection** - ~10 ns to pick weighted API keys
-
-**Complete Benchmarks:** [Performance Analysis](https://docs.getbifrost.ai/benchmarking/getting-started)
-
----
-
-## Documentation
-
-**Complete Documentation:** [https://docs.getbifrost.ai](https://docs.getbifrost.ai)
-
-### Quick Start
-
-- [Gateway Setup](https://docs.getbifrost.ai/quickstart/gateway/setting-up) - HTTP API deployment in 30 seconds
-- [Go SDK Setup](https://docs.getbifrost.ai/quickstart/go-sdk/setting-up) - Direct Go integration
-- [Provider Configuration](https://docs.getbifrost.ai/quickstart/gateway/provider-configuration) - Multi-provider setup
-
-### Features
-
-- [Multi-Provider Support](https://docs.getbifrost.ai/providers/supported-providers/overview) - Single API for all providers
-- [MCP Integration](https://docs.getbifrost.ai/mcp/overview) - External tool calling
-- [Semantic Caching](https://docs.getbifrost.ai/features/semantic-caching) - Intelligent response caching
-- [Fallbacks & Load Balancing](https://docs.getbifrost.ai/features/retries-and-fallbacks) - Reliability features
-- [Budget Management](https://docs.getbifrost.ai/features/governance/budget-and-limits) - Cost control and governance
-
-### Integrations
-
-- [OpenAI SDK](https://docs.getbifrost.ai/integrations/openai-sdk/overview) - Drop-in OpenAI replacement
-- [Anthropic SDK](https://docs.getbifrost.ai/integrations/anthropic-sdk/overview) - Drop-in Anthropic replacement
-- [AWS Bedrock SDK](https://docs.getbifrost.ai/integrations/bedrock-sdk/overview) - AWS Bedrock integration
-- [Google GenAI SDK](https://docs.getbifrost.ai/integrations/genai-sdk/overview) - Drop-in GenAI replacement
-- [LiteLLM SDK](https://docs.getbifrost.ai/integrations/litellm-sdk) - LiteLLM integration
-- [LangChain SDK](https://docs.getbifrost.ai/integrations/langchain-sdk) - LangChain integration
-
-### Enterprise
-
-- [Custom Plugins](https://docs.getbifrost.ai/enterprise/custom-plugins) - Extend functionality
-- [Clustering](https://docs.getbifrost.ai/enterprise/clustering) - Multi-node deployment
-- [Secrets Management](https://docs.getbifrost.ai/deployment-guides/config-json#environment-variable-references) - Secure key management
-- [Production Deployment](https://docs.getbifrost.ai/deployment-guides/k8s) - Scaling and monitoring
-
----
-
-## Need Help?
-
-**[Join our Discord](https://discord.gg/exN5KAydbU)** for community support and discussions.
-
-Get help with:
-
-- Quick setup assistance and troubleshooting
-- Best practices and configuration tips
-- Community discussions and support
-- Real-time help with integrations
-
----
-
-## Contributing
-
-We welcome contributions of all kinds! See our [Contributing Guide](https://docs.getbifrost.ai/contributing/setting-up-repo) for:
-
-- Setting up the development environment
-- Code conventions and best practices
-- How to submit pull requests
-- Building and testing locally
-
-For development requirements and build instructions, see our [Development Setup Guide](https://docs.getbifrost.ai/contributing/setting-up-repo#development-environment-setup).
-
----
-
-## License
-
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-
-Built with ❤️ by [Maxim](https://github.com/maximhq)
+本项目沿用 [Apache 2.0 许可证](LICENSE)。Bifrost 原项目由 [Maxim](https://github.com/maximhq) 开发和维护；本仓库是独立维护的 fork。
